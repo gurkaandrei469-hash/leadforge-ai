@@ -1,0 +1,423 @@
+openapi: 3.1.0
+info:
+  title: LeadForge AI REST API
+  version: 1.0.0
+  description: |
+    Complete REST API for LeadForge AI.
+    All endpoints are prefixed with `/api/v1`.
+    Two auth modes:
+    1. **Clerk JWT** — short-lived Bearer token from the Clerk session. Optional `X-Team-Id` header selects active team; defaults to first membership.
+    2. **API Key** — long-lived `lf_*` token (Bearer). Bound to a single team. Listed/managed at `/api-keys`.
+servers:
+  - url: https://api.leadforge.ai/api/v1
+  - url: http://localhost:4000/api/v1
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT or lf_api_key
+
+  parameters:
+    teamHeader:
+      name: X-Team-Id
+      in: header
+      schema: { type: string }
+      description: Active team (Clerk JWT only).
+    page:
+      name: page
+      in: query
+      schema: { type: integer, default: 1, minimum: 1 }
+    pageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, default: 50, maximum: 200 }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [UNAUTHORIZED, BAD_REQUEST, RATE_LIMITED, PAYMENT_REQUIRED, NOT_FOUND] }
+            message: { type: string }
+            details: { type: object }
+
+    UserRole: { type: string, enum: [OWNER, ADMIN, MEMBER, VIEWER] }
+    PlanTier: { type: string, enum: [FREE, STARTER, PRO, BUSINESS, ENTERPRISE] }
+    JobStatus: { type: string, enum: [PENDING, QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED] }
+    SourceType:
+      type: string
+      enum: [WEB_SEARCH, DIRECTORY, COMPANY_PAGE, BLOG, FORUM, SOCIAL_LINKEDIN, SOCIAL_TWITTER, CONTACT_PAGE, LISTING, DATABASE, CUSTOM_URL_LIST]
+    VerificationStatus: { type: string, enum: [PENDING, VALID, INVALID, RISKY, UNKNOWN, CATCH_ALL] }
+    ExportFormat: { type: string, enum: [CSV, XLSX, JSON] }
+
+    FilterCondition:
+      type: object
+      required: [field, operator, value]
+      properties:
+        field:
+          type: string
+          enum: [niche, industry, domain_extension, country, region, city, language, keyword, companyName, companyDomain, companySize, companyRevenue, companyAuthority, jobTitle, jobRole, jobSeniority, jobDepartment, technology, social_presence, has_email, has_phone, has_contact_page, qualityScore, relevanceScore, intentScore, authorityScore, verificationStatus, createdAt, sourceType]
+        operator:
+          type: string
+          enum: [eq, neq, in, nin, contains, starts_with, ends_with, gt, gte, lt, lte, between, exists, not_exists, has_any, has_all]
+        value: {}
+    Filter:
+      oneOf:
+        - $ref: '#/components/schemas/FilterCondition'
+        - type: object
+          properties:
+            AND: { type: array, items: { $ref: '#/components/schemas/Filter' } }
+        - type: object
+          properties:
+            OR: { type: array, items: { $ref: '#/components/schemas/Filter' } }
+        - type: object
+          properties:
+            NOT: { $ref: '#/components/schemas/Filter' }
+
+    Team:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        planTier: { $ref: '#/components/schemas/PlanTier' }
+        creditsTotal: { type: integer }
+        creditsUsed: { type: integer }
+
+    Job:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        progress: { type: number }
+        leadsFound: { type: integer }
+        leadsVerified: { type: integer }
+        targetLeads: { type: integer }
+        sources: { type: array, items: { $ref: '#/components/schemas/SourceType' } }
+        filters: { $ref: '#/components/schemas/Filter' }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+
+    Lead:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, nullable: true }
+        fullName: { type: string, nullable: true }
+        jobTitle: { type: string, nullable: true }
+        companyName: { type: string, nullable: true }
+        companyDomain: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        linkedinUrl: { type: string, nullable: true }
+        qualityScore: { type: integer, nullable: true }
+        verificationStatus: { $ref: '#/components/schemas/VerificationStatus' }
+        sourceUrl: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    EmailVerification:
+      type: object
+      properties:
+        email: { type: string }
+        status: { $ref: '#/components/schemas/VerificationStatus' }
+        score: { type: integer }
+        confidence: { type: number }
+        syntaxValid: { type: boolean }
+        isDisposable: { type: boolean }
+        mxValid: { type: boolean }
+        smtpDeliverable: { type: boolean, nullable: true }
+        isCatchAll: { type: boolean, nullable: true }
+        isRoleAccount: { type: boolean }
+        reason: { type: string }
+
+paths:
+  /auth/me:
+    get:
+      summary: Current user + team
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { type: object }
+                  currentTeamId: { type: string }
+                  role: { $ref: '#/components/schemas/UserRole' }
+
+  /teams:
+    get: { summary: List my teams, responses: { '200': { description: ok } } }
+    post:
+      summary: Create team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string } }, required: [name] }
+      responses: { '201': { description: created } }
+
+  /teams/{id}:
+    get: { summary: Get team, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+    patch: { summary: Update team, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+
+  /teams/{id}/invitations:
+    post:
+      summary: Invite member
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: '#/components/schemas/UserRole' }
+      responses: { '201': { description: created } }
+
+  /jobs:
+    post:
+      summary: Create extraction job
+      parameters: [{ $ref: '#/components/parameters/teamHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, sources, filters]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                sources: { type: array, items: { $ref: '#/components/schemas/SourceType' } }
+                filters: { $ref: '#/components/schemas/Filter' }
+                targetLeads: { type: integer, default: 100, maximum: 50000 }
+                priority: { type: string, enum: [LOW, NORMAL, HIGH, URGENT] }
+      responses:
+        '201':
+          description: created
+          content: { application/json: { schema: { type: object, properties: { job: { $ref: '#/components/schemas/Job' } } } } }
+        '402': { description: insufficient credits, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    get:
+      summary: List jobs
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/JobStatus' }
+      responses: { '200': { description: ok } }
+
+  /jobs/{id}:
+    get: { summary: Get job, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /jobs/{id}/pause:
+    post: { summary: Pause job, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /jobs/{id}/resume:
+    post: { summary: Resume job, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /jobs/{id}/cancel:
+    post: { summary: Cancel job, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+  /jobs/{jobId}/stream:
+    get:
+      summary: SSE stream of job progress
+      description: Server-Sent Events. Each `data:` payload is JSON `{ progress, leadsFound, pagesScraped }`.
+      parameters: [{ name: jobId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: text/event-stream, content: { text/event-stream: {} } } }
+
+  /leads:
+    get:
+      summary: List leads
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - { name: search, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: jobId, in: query, schema: { type: string } }
+        - { name: verificationStatus, in: query, schema: { $ref: '#/components/schemas/VerificationStatus' } }
+        - { name: sortBy, in: query, schema: { type: string, enum: [createdAt, qualityScore, companyName, fullName] } }
+        - { name: sortOrder, in: query, schema: { type: string, enum: [asc, desc] } }
+      responses: { '200': { description: ok } }
+
+  /leads/search:
+    post:
+      summary: Search leads via filter tree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filter]
+              properties:
+                filter: { $ref: '#/components/schemas/Filter' }
+                page: { type: integer }
+                pageSize: { type: integer }
+      responses: { '200': { description: ok } }
+
+  /leads/{id}:
+    get: { summary: Get lead, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+    patch:
+      summary: Update lead
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [NEW, VERIFIED, ENRICHED, EXPORTED, ARCHIVED] }
+                isFavorite: { type: boolean }
+                notes: { type: string, nullable: true }
+      responses: { '200': { description: ok } }
+    delete: { summary: Delete lead, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: deleted } } }
+
+  /leads/bulk:
+    post:
+      summary: Bulk action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, action]
+              properties:
+                ids: { type: array, items: { type: string } }
+                action: { type: string, enum: [archive, favorite, unfavorite, delete, verify] }
+      responses: { '200': { description: ok } }
+
+  /verification/single:
+    post:
+      summary: Verify one email (synchronous)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '200':
+          description: ok
+          content: { application/json: { schema: { type: object, properties: { result: { $ref: '#/components/schemas/EmailVerification' } } } } }
+
+  /verification/batch:
+    post:
+      summary: Verify many leads (async)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [leadIds]
+              properties:
+                leadIds: { type: array, items: { type: string } }
+      responses: { '202': { description: queued } }
+
+  /verification/status/{leadId}:
+    get:
+      summary: Verification result for a lead
+      parameters: [{ name: leadId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: ok } }
+
+  /exports:
+    post:
+      summary: Create export
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format]
+              properties:
+                format: { $ref: '#/components/schemas/ExportFormat' }
+                filter: { $ref: '#/components/schemas/Filter' }
+                leadIds: { type: array, items: { type: string } }
+                jobId: { type: string }
+      responses: { '202': { description: queued } }
+    get: { summary: List exports, responses: { '200': { description: ok } } }
+  /exports/{id}:
+    get: { summary: Get export status, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '200': { description: ok } } }
+
+  /billing/plans:
+    get:
+      summary: Plan catalog (public)
+      security: []
+      responses: { '200': { description: ok } }
+  /billing/checkout:
+    post: { summary: Stripe checkout session, responses: { '200': { description: ok } } }
+  /billing/portal:
+    post: { summary: Stripe billing portal, responses: { '200': { description: ok } } }
+  /billing/usage:
+    get: { summary: Credit usage, responses: { '200': { description: ok } } }
+  /billing/transactions:
+    get: { summary: Credit transactions, responses: { '200': { description: ok } } }
+  /billing/invoices:
+    get: { summary: Invoice list, responses: { '200': { description: ok } } }
+  /billing/stripe/webhook:
+    post:
+      summary: Stripe webhook
+      security: []
+      responses: { '200': { description: ok } }
+
+  /analytics/overview:
+    get: { summary: KPI snapshot, responses: { '200': { description: ok } } }
+  /analytics/leads-timeseries:
+    get: { summary: 30-day lead counts, responses: { '200': { description: ok } } }
+  /analytics/top-niches:
+    get: { summary: Top niches by lead count, responses: { '200': { description: ok } } }
+
+  /api-keys:
+    post:
+      summary: Create API key (returned once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                scopes: { type: array, items: { type: string } }
+                expiresAt: { type: string, format: date-time }
+      responses: { '201': { description: created } }
+    get: { summary: List API keys, responses: { '200': { description: ok } } }
+  /api-keys/{id}:
+    delete: { summary: Revoke API key, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: revoked } } }
+
+  /webhooks:
+    post:
+      summary: Create webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                events: { type: array, items: { type: string, enum: [job.completed, job.failed, lead.created, verification.completed, export.ready] } }
+      responses: { '201': { description: created } }
+    get: { summary: List webhooks, responses: { '200': { description: ok } } }
+  /webhooks/{id}:
+    delete: { summary: Delete webhook, parameters: [{ name: id, in: path, required: true, schema: { type: string } }], responses: { '204': { description: deleted } } }
+
+  /admin/teams:
+    get: { summary: List all teams (admin), responses: { '200': { description: ok } } }
+  /admin/jobs:
+    get: { summary: List all jobs (admin), responses: { '200': { description: ok } } }
+  /admin/audit:
+    get: { summary: Audit log for current team, responses: { '200': { description: ok } } }

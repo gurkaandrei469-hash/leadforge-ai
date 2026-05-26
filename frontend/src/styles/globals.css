@@ -1,0 +1,202 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 89% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 222 89% 53%;
+    --radius: 0.625rem;
+
+    /* Brand gradient stops — used for hero, primary CTAs, stat cards */
+    --grad-from: 222 89% 53%;
+    --grad-via: 250 91% 60%;
+    --grad-to: 280 89% 58%;
+  }
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 14%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
+
+    --grad-from: 217 91% 60%;
+    --grad-via: 250 85% 65%;
+    --grad-to: 280 85% 65%;
+  }
+
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "cv11" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Stronger heading hierarchy */
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+    text-wrap: balance;
+  }
+
+  /* Better focus ring for keyboard nav */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    transition: box-shadow 150ms ease-out;
+  }
+
+  /* Tabular numerals for data tables, prices, counters */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* Smooth scroll for in-page anchors */
+  html { scroll-behavior: smooth; }
+
+  /* Selection color */
+  ::selection { @apply bg-primary/20 text-primary; }
+}
+
+@layer utilities {
+  /* Brand gradient utilities */
+  .bg-grad-brand {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--grad-from)) 0%,
+      hsl(var(--grad-via)) 50%,
+      hsl(var(--grad-to)) 100%
+    );
+  }
+  .text-grad-brand {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--grad-from)) 0%,
+      hsl(var(--grad-via)) 50%,
+      hsl(var(--grad-to)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Subtle elevated card with soft shadow */
+  .card-elevated {
+    @apply rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md;
+  }
+
+  /* Glass surface for overlays */
+  .glass {
+    @apply bg-background/60 backdrop-blur-md backdrop-saturate-150 border border-white/10;
+  }
+  .dark .glass {
+    @apply bg-background/40 backdrop-blur-md backdrop-saturate-150 border-white/5;
+  }
+
+  /* ── Mobile / iOS / Android utilities ───────────────────────────────── */
+
+  /* Safe-area insets — respects iPhone notch, dynamic island, home indicator. */
+  .safe-top    { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-x      { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .safe-all {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Stop iOS Safari from zooming into form fields when they get focus (font-size must be >=16px) */
+  @media (max-width: 768px) {
+    input, textarea, select { font-size: max(16px, 0.875rem); }
+  }
+
+  /* Minimum 44×44 px tap target — Apple HIG + Android Material both recommend this */
+  .tap {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Use the dynamic viewport on iOS so 100vh isn't broken by the URL bar */
+  .h-svh { height: 100svh; }
+  .min-h-svh { min-height: 100svh; }
+
+  /* Disable text selection on UI chrome (sidebars, nav) for a more app-like feel */
+  .no-select { -webkit-user-select: none; user-select: none; }
+
+  /* Smooth momentum scroll on iOS */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Hide scrollbar but keep scrolling (mobile feel) */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  /* Animated grid background — used in landing hero */
+  .bg-grid-fade {
+    background-image: linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%);
+  }
+
+  /* Subtle radial glow */
+  .glow-primary {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.1), 0 8px 24px -8px hsl(var(--primary) / 0.35);
+  }
+
+  /* Marquee animation */
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .animate-marquee { animation: marquee 30s linear infinite; }
+
+  /* Subtle floating animation for hero decorations */
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+  .animate-float { animation: float-slow 6s ease-in-out infinite; }
+
+  /* Reduced motion: turn off decorative animations */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-marquee, .animate-float { animation: none; }
+    * { transition-duration: 0s !important; animation-duration: 0s !important; }
+  }
+}

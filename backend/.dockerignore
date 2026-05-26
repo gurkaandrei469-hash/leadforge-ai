@@ -1,0 +1,36 @@
+# Dependencies (re-installed inside the image)
+node_modules
+npm-debug.log
+
+# Build output
+dist
+*.log
+
+# Local env files — Railway provides them at runtime
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Editor / OS
+.DS_Store
+.vscode
+.idea
+
+# Tests + coverage
+coverage
+*.test.ts
+*.spec.ts
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose.yml
+
+# Prisma local artifacts (the migrations dir IS shipped — only ignore caches)
+prisma/migrations.lock

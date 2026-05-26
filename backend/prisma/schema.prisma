@@ -1,0 +1,852 @@
+// LeadForge AI - Complete database schema
+// Entities: users, teams, leads, verification, jobs, billing, audit
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── IDENTITY & TEAMS ───────────────────────────
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  PRO
+  BUSINESS
+  ENTERPRISE
+}
+
+model User {
+  id              String          @id @default(cuid())
+  clerkId         String          @unique
+  email           String          @unique
+  fullName        String?
+  avatarUrl       String?
+  emailVerified   Boolean         @default(false)
+  twoFactorEnabled Boolean        @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  lastLoginAt     DateTime?
+  deletedAt       DateTime?
+
+  memberships     TeamMembership[]
+  ownedTeams      Team[]          @relation("TeamOwner")
+  apiKeys         ApiKey[]
+  auditLogs       AuditLog[]
+  invitations     Invitation[]    @relation("InvitedBy")
+  notifications   Notification[]
+
+  @@index([email])
+  @@index([clerkId])
+}
+
+model Team {
+  id              String          @id @default(cuid())
+  name            String
+  slug            String          @unique
+  logoUrl         String?
+  ownerId         String
+  planTier        PlanTier        @default(FREE)
+  creditsTotal    Int             @default(100)
+  creditsUsed     Int             @default(0)
+  creditsResetAt  DateTime?
+  billingEmail    String?
+  stripeCustomerId String?        @unique
+  stripeSubscriptionId String?    @unique
+  trialEndsAt     DateTime?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  owner           User            @relation("TeamOwner", fields: [ownerId], references: [id])
+  memberships     TeamMembership[]
+  invitations     Invitation[]
+  jobs            ExtractionJob[]
+  leads           Lead[]
+  apiKeys         ApiKey[]
+  auditLogs       AuditLog[]
+  exports         Export[]
+  subscriptions   Subscription[]
+  invoices        Invoice[]
+  creditTransactions CreditTransaction[]
+  webhooks        Webhook[]
+  crmConnections  CrmConnection[]
+  leadLists       LeadList[]
+  campaigns       Campaign[]
+  sendingAccounts SendingAccount[]
+
+  @@index([slug])
+  @@index([stripeCustomerId])
+}
+
+model TeamMembership {
+  id              String          @id @default(cuid())
+  userId          String
+  teamId          String
+  role            UserRole        @default(MEMBER)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([teamId])
+}
+
+model Invitation {
+  id              String          @id @default(cuid())
+  email           String
+  teamId          String
+  invitedById     String
+  role            UserRole        @default(MEMBER)
+  token           String          @unique
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime        @default(now())
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy       User            @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([email, teamId])
+  @@index([token])
+}
+
+model ApiKey {
+  id              String          @id @default(cuid())
+  teamId          String
+  userId          String
+  name            String
+  keyHash         String          @unique
+  keyPrefix       String
+  scopes          String[]
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime        @default(now())
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id])
+
+  @@index([keyHash])
+  @@index([teamId])
+}
+
+// ─────────────────────────── EXTRACTION JOBS ───────────────────────────
+
+enum JobStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum JobPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SourceType {
+  WEB_SEARCH
+  DIRECTORY
+  COMPANY_PAGE
+  BLOG
+  FORUM
+  SOCIAL_LINKEDIN
+  SOCIAL_TWITTER
+  CONTACT_PAGE
+  LISTING
+  DATABASE
+  CUSTOM_URL_LIST
+}
+
+model ExtractionJob {
+  id              String          @id @default(cuid())
+  teamId          String
+  createdById     String
+  name            String
+  description     String?
+  status          JobStatus       @default(PENDING)
+  priority        JobPriority     @default(NORMAL)
+  sources         SourceType[]
+  filters         Json
+  targetLeads     Int             @default(100)
+  schedule        String?         // Cron expression, e.g. "0 9 * * 1" — runs Mon 9am
+  leadsFound      Int             @default(0)
+  leadsVerified   Int             @default(0)
+  pagesScraped    Int             @default(0)
+  creditsUsed     Int             @default(0)
+  progress        Float           @default(0)
+  errorMessage    String?
+  bullJobId       String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  pausedAt        DateTime?
+  estimatedFinishAt DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  leads           Lead[]
+  events          JobEvent[]
+  exports         Export[]
+
+  @@index([teamId, status])
+  @@index([status, priority])
+  @@index([bullJobId])
+}
+
+model JobEvent {
+  id              String          @id @default(cuid())
+  jobId           String
+  type            String
+  message         String
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+
+  job             ExtractionJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+}
+
+// ─────────────────────────── LEADS ───────────────────────────
+
+enum LeadStatus {
+  NEW
+  VERIFIED
+  ENRICHED
+  EXPORTED
+  ARCHIVED
+}
+
+enum VerificationStatus {
+  PENDING
+  VALID
+  INVALID
+  RISKY
+  UNKNOWN
+  CATCH_ALL
+}
+
+model Lead {
+  id              String          @id @default(cuid())
+  teamId          String
+  jobId           String?
+
+  // Core
+  email           String?
+  emailNormalized String?
+  firstName       String?
+  lastName        String?
+  fullName        String?
+  jobTitle        String?
+  jobRole         String?
+  jobSeniority    String?
+  jobDepartment   String?
+
+  // Company
+  companyName     String?
+  companyDomain   String?
+  companyWebsite  String?
+  companySize     String?
+  companyIndustry String?
+  companyRevenue  String?
+
+  // Location
+  country         String?
+  countryCode     String?
+  region          String?
+  city            String?
+  timezone        String?
+  language        String?
+
+  // Social
+  linkedinUrl     String?
+  twitterUrl      String?
+  facebookUrl     String?
+  instagramUrl    String?
+  githubUrl       String?
+
+  // Discovery context
+  sourceType      SourceType
+  sourceUrl       String
+  sourcePageTitle String?
+  matchedKeywords String[]
+  niche           String?
+  niches          String[]
+
+  // AI scoring
+  qualityScore    Int?
+  relevanceScore  Int?
+  intentScore     Int?
+  authorityScore  Int?
+  aiTags          String[]
+  aiSummary       String?
+
+  // Verification
+  verificationStatus VerificationStatus @default(PENDING)
+  emailScore      Int?
+
+  // Tech stack
+  technologies    String[]
+
+  // Status
+  status          LeadStatus      @default(NEW)
+  isFavorite      Boolean         @default(false)
+  isHidden        Boolean         @default(false)
+  notes           String?
+  customFields    Json?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  job             ExtractionJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  verification    EmailVerification?
+  enrichment      LeadEnrichment?
+  crmPushes       CrmPush[]
+  listMemberships LeadListMembership[]
+  campaignRecipients CampaignRecipient[]
+
+  @@unique([teamId, emailNormalized])
+  @@index([teamId, status])
+  @@index([teamId, verificationStatus])
+  @@index([jobId])
+  @@index([companyDomain])
+  @@index([qualityScore])
+}
+
+model LeadEnrichment {
+  id              String          @id @default(cuid())
+  leadId          String          @unique
+  provider        String
+  rawData         Json
+  enrichedAt      DateTime        @default(now())
+
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────── EMAIL VERIFICATION ───────────────────────────
+
+model EmailVerification {
+  id                 String       @id @default(cuid())
+  leadId             String       @unique
+  email              String
+  emailNormalized    String
+
+  // 6 validation methods
+  syntaxValid        Boolean?
+  isDisposable       Boolean?
+  mxValid            Boolean?
+  mxRecords          String[]
+  smtpDeliverable    Boolean?
+  isCatchAll         Boolean?
+  isRoleAccount      Boolean?
+
+  // Aggregate
+  status             VerificationStatus
+  score              Int
+  confidence         Float
+  reason             String?
+  durationMs         Int?
+
+  verifiedAt         DateTime     @default(now())
+  expiresAt          DateTime?
+
+  lead               Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([emailNormalized])
+  @@index([status])
+}
+
+model DomainCache {
+  id              String          @id @default(cuid())
+  domain          String          @unique
+  mxRecords       String[]
+  hasMx           Boolean
+  isDisposable    Boolean
+  isCatchAll      Boolean?
+  smtpHost        String?
+  smtpPort        Int?
+  lastCheckedAt   DateTime        @default(now())
+  expiresAt       DateTime
+
+  @@index([domain])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────── EXPORTS ───────────────────────────
+
+enum ExportFormat {
+  CSV
+  XLSX
+  JSON
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+  EXPIRED
+}
+
+model Export {
+  id              String          @id @default(cuid())
+  teamId          String
+  jobId           String?
+  format          ExportFormat
+  status          ExportStatus    @default(PENDING)
+  filters         Json?
+  leadCount       Int             @default(0)
+  fileUrl         String?
+  fileSizeBytes   Int?
+  expiresAt       DateTime?
+  createdAt       DateTime        @default(now())
+  completedAt     DateTime?
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  job             ExtractionJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, status])
+}
+
+// ─────────────────────────── BILLING ───────────────────────────
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  UNPAID
+}
+
+model Subscription {
+  id              String              @id @default(cuid())
+  teamId          String
+  stripeSubscriptionId String         @unique
+  stripePriceId   String
+  planTier        PlanTier
+  status          SubscriptionStatus
+  currentPeriodStart DateTime
+  currentPeriodEnd DateTime
+  cancelAtPeriodEnd Boolean           @default(false)
+  cancelledAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  team            Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+}
+
+model Invoice {
+  id              String          @id @default(cuid())
+  teamId          String
+  stripeInvoiceId String          @unique
+  amount          Int
+  currency        String          @default("usd")
+  status          String
+  invoiceUrl      String?
+  pdfUrl          String?
+  paidAt          DateTime?
+  createdAt       DateTime        @default(now())
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+}
+
+enum CreditTransactionType {
+  PURCHASE
+  SUBSCRIPTION_GRANT
+  EXTRACTION
+  VERIFICATION
+  ENRICHMENT
+  REFUND
+  ADJUSTMENT
+  TRIAL_GRANT
+}
+
+model CreditTransaction {
+  id              String          @id @default(cuid())
+  teamId          String
+  type            CreditTransactionType
+  amount          Int
+  balanceBefore   Int
+  balanceAfter    Int
+  description     String?
+  jobId           String?
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt])
+}
+
+// ─────────────────────────── AUDIT & SYSTEM ───────────────────────────
+
+model AuditLog {
+  id              String          @id @default(cuid())
+  teamId          String?
+  userId          String?
+  action          String
+  resourceType    String
+  resourceId      String?
+  ipAddress       String?
+  userAgent       String?
+  metadata        Json?
+  success         Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+
+  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  team            Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, createdAt])
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+}
+
+model Webhook {
+  id              String          @id @default(cuid())
+  teamId          String
+  url             String
+  events          String[]
+  secret          String
+  isActive        Boolean         @default(true)
+  lastTriggeredAt DateTime?
+  failureCount    Int             @default(0)
+  createdAt       DateTime        @default(now())
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id              String          @id @default(cuid())
+  userId          String
+  type            String
+  title           String
+  message         String
+  link            String?
+  readAt          DateTime?
+  createdAt       DateTime        @default(now())
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+enum CrmProvider {
+  HUBSPOT
+  SALESFORCE
+  PIPEDRIVE
+}
+
+model CrmConnection {
+  id              String          @id @default(cuid())
+  teamId          String
+  provider        CrmProvider
+  accessToken     String          // private-app token or OAuth access token
+  refreshToken    String?
+  expiresAt       DateTime?
+  accountLabel    String?         // e.g. "Sales HubSpot — Acme"
+  isActive        Boolean         @default(true)
+  lastSyncAt      DateTime?
+  totalPushed     Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  pushes          CrmPush[]
+
+  @@unique([teamId, provider])
+}
+
+model CrmPush {
+  id              String          @id @default(cuid())
+  connectionId   String
+  leadId         String
+  externalId     String?         // remote contact ID
+  status          String          // SUCCESS, FAILED, SKIPPED
+  errorMessage    String?
+  createdAt       DateTime        @default(now())
+
+  connection      CrmConnection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, leadId])
+  @@index([connectionId])
+}
+
+// ─────────────────────────── LEAD LISTS ───────────────────────────
+
+model LeadList {
+  id              String          @id @default(cuid())
+  teamId          String
+  name            String
+  description     String?
+  color           String          @default("violet") // tailwind color name
+  createdById     String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  memberships     LeadListMembership[]
+
+  @@unique([teamId, name])
+  @@index([teamId])
+}
+
+model LeadListMembership {
+  listId          String
+  leadId          String
+  addedAt         DateTime        @default(now())
+
+  list            LeadList        @relation(fields: [listId], references: [id], onDelete: Cascade)
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@id([listId, leadId])
+  @@index([leadId])
+}
+
+// ─────────────────────────── SENDING ACCOUNTS ───────────────────────────
+
+enum SendingProvider {
+  SMTP
+  SENDGRID
+  SES
+  GMAIL_OAUTH
+  MICROSOFT_OAUTH
+}
+
+model SendingAccount {
+  id              String          @id @default(cuid())
+  teamId          String
+  provider        SendingProvider
+  name            String          // display label
+  fromName        String
+  fromEmail       String
+  // SMTP-specific
+  smtpHost        String?
+  smtpPort        Int?
+  smtpUser        String?
+  smtpPassEnc     String?         // TODO: real encryption — stored plain for MVP
+  smtpSecure      Boolean         @default(true)
+  // API-key-based providers
+  apiKeyEnc       String?         // TODO: real encryption
+  // OAuth-based providers (Gmail)
+  oauthRefreshTokenEnc String?    // long-lived refresh token (encrypted-at-rest in prod)
+  oauthAccessToken     String?    // short-lived; refreshed on demand
+  oauthExpiresAt       DateTime?  // when oauthAccessToken expires
+  oauthScopes          String?    // space-separated list, e.g. "https://mail.google.com/"
+  // Optional IMAP for reply detection (typically same creds as SMTP for Gmail/Outlook)
+  imapHost        String?
+  imapPort        Int?
+  imapUser        String?
+  imapPassEnc     String?
+  imapSecure      Boolean         @default(true)
+  imapEnabled     Boolean         @default(false)
+  lastImapPollAt  DateTime?
+  // Limits + tracking
+  dailyLimit      Int             @default(50)
+  sentToday       Int             @default(0)
+  lastSendAt      DateTime?
+  lastResetAt     DateTime?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  campaigns       Campaign[]
+
+  @@index([teamId])
+}
+
+// ─────────────────────────── CAMPAIGNS ───────────────────────────
+
+enum CampaignStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum RecipientStatus {
+  QUEUED
+  IN_PROGRESS
+  SENT
+  REPLIED
+  BOUNCED
+  UNSUBSCRIBED
+  FAILED
+}
+
+enum SendStatus {
+  PENDING
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+model Campaign {
+  id              String          @id @default(cuid())
+  teamId          String
+  createdById     String
+  name            String
+  description     String?
+  status          CampaignStatus  @default(DRAFT)
+  sendingAccountId String?
+  // Sending pace
+  dailyLimit      Int             @default(50)
+  // Schedule windows
+  sendStartHour   Int             @default(9)   // 0-23, team-local
+  sendEndHour     Int             @default(17)
+  weekdaysOnly    Boolean         @default(true)
+  // Stats (denormalized)
+  recipientCount  Int             @default(0)
+  sentCount       Int             @default(0)
+  openedCount     Int             @default(0)
+  clickedCount    Int             @default(0)
+  repliedCount    Int             @default(0)
+  bouncedCount    Int             @default(0)
+  unsubCount      Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  launchedAt      DateTime?
+  completedAt     DateTime?
+
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sendingAccount  SendingAccount? @relation(fields: [sendingAccountId], references: [id], onDelete: SetNull)
+  steps           CampaignStep[]
+  recipients      CampaignRecipient[]
+  sends           EmailSend[]
+
+  @@index([teamId, status])
+}
+
+model CampaignStep {
+  id              String          @id @default(cuid())
+  campaignId      String
+  order           Int
+  delayDays       Int             @default(0) // days to wait after previous step (0 = send immediately on enqueue)
+  subject         String
+  body            String          // markdown / plain text with {{variables}}
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  campaign        Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sends           EmailSend[]
+
+  @@unique([campaignId, order])
+  @@index([campaignId])
+}
+
+model CampaignRecipient {
+  id              String          @id @default(cuid())
+  campaignId      String
+  leadId          String
+  status          RecipientStatus @default(QUEUED)
+  currentStep     Int             @default(0)
+  nextSendAt      DateTime?
+  lastSentAt      DateTime?
+  addedAt         DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  campaign        Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sends           EmailSend[]
+
+  @@unique([campaignId, leadId])
+  @@index([status, nextSendAt])
+}
+
+model EmailSend {
+  id              String          @id @default(cuid())
+  campaignId      String
+  recipientId     String
+  stepId          String
+  status          SendStatus      @default(PENDING)
+  toEmail         String
+  fromEmail       String
+  subject         String
+  bodyRendered    String          // final HTML with tracking pixel & links rewritten
+  providerMessageId String?
+  errorMessage    String?
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  repliedAt       DateTime?
+  bouncedAt       DateTime?
+  // For IMAP reply matching — populated on send so we can look up by Message-ID later
+  messageIdHeader String?         // RFC 5322 Message-ID we put on the outbound mail
+  createdAt       DateTime        @default(now())
+
+  campaign        Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recipient       CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  step            CampaignStep    @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  events          EmailEvent[]
+
+  @@index([campaignId, status])
+  @@index([recipientId])
+  @@index([providerMessageId])
+  @@index([messageIdHeader])
+}
+
+model EmailEvent {
+  id              String          @id @default(cuid())
+  sendId          String
+  type            String          // open, click, bounce, reply, complaint
+  userAgent       String?
+  ipAddress       String?
+  url             String?         // for click events
+  createdAt       DateTime        @default(now())
+
+  send            EmailSend       @relation(fields: [sendId], references: [id], onDelete: Cascade)
+
+  @@index([sendId])
+}
+
+model UnsubscribeToken {
+  token           String          @id @default(cuid())
+  teamId          String
+  leadId          String
+  campaignId      String?
+  unsubscribedAt  DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@index([leadId])
+}
+
+model RateLimit {
+  id              String          @id @default(cuid())
+  key             String          @unique
+  count           Int             @default(0)
+  resetAt         DateTime
+  createdAt       DateTime        @default(now())
+
+  @@index([key])
+  @@index([resetAt])
+}
