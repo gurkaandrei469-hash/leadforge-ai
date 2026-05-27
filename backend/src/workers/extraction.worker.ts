@@ -45,12 +45,40 @@ export const extractionWorker = new Worker(
         },
       });
 
+      // Pull the latest leadsFound count from DB (set by onProgress during run).
+      const finalState = await prisma.extractionJob.findUnique({
+        where: { id: jobId },
+        select: { leadsFound: true, pagesScraped: true },
+      });
+      const finalLeads = finalState?.leadsFound ?? 0;
+
+      // When extraction completes with zero leads, leave a helpful message so
+      // the user knows it wasn't a silent failure — and what to try next. The
+      // status is still COMPLETED so the UI doesn't show it as a hard error,
+      // but `errorMessage` gives the AI assistant something concrete to relay.
+      const completionMessage =
+        finalLeads === 0
+          ? `Searched ${finalState?.pagesScraped ?? 0} pages but couldn't find any contactable leads matching your criteria. Try a broader keyword — "${dbJob.name}" may be too specific. Useful patterns: "CFO consultant" instead of "Spectrum CFO", or "B2B SaaS marketing agency" instead of a single brand name.`
+          : null;
+
       await prisma.extractionJob.update({
         where: { id: jobId },
-        data: { status: 'COMPLETED', progress: 100, completedAt: new Date() },
+        data: {
+          status: 'COMPLETED',
+          progress: 100,
+          completedAt: new Date(),
+          ...(completionMessage ? { errorMessage: completionMessage } : {}),
+        },
       });
       await prisma.jobEvent.create({
-        data: { jobId, type: 'completed', message: 'Extraction completed' },
+        data: {
+          jobId,
+          type: 'completed',
+          message:
+            finalLeads === 0
+              ? `Completed with 0 leads — try broader keywords`
+              : `Extraction completed — ${finalLeads} leads found`,
+        },
       });
     } catch (err) {
       logger.error({ err, jobId }, 'Extraction failed');

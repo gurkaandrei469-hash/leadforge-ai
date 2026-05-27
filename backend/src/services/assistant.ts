@@ -47,7 +47,12 @@ WHEN UNCERTAIN
 LIMITS
 - Maximum 5 actions per user message unless they explicitly ask for a multi-step workflow.`;
 
-const MAX_HOPS = 6;
+// 6 was too tight — a normal "create extraction → verify → check status →
+// list jobs" trip easily eats 4-5 hops before the assistant has the data it
+// needs to answer. Bumping to 16 lets the assistant handle multi-step
+// workflows without truncating mid-response. We still cap to prevent
+// runaway loops, just at a more humane number.
+const MAX_HOPS = 16;
 
 // Provider preference: explicit mock > Groq (PRIMARY) > OpenRouter > Anthropic > OpenAI > mock fallback
 // Groq wins for chat agents: sub-second TTFT, generous free tier, OpenAI-compatible.

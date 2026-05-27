@@ -173,17 +173,39 @@ export const tools: Tool[] = [
 
   {
     name: 'get_job_status',
-    description: 'Get the current status of an extraction job (queued, running, completed, etc.) and lead count.',
+    description:
+      'Get the current status of an extraction job. Pass EITHER `job_id` (CUID) OR `job_name` ' +
+      '(partial, case-insensitive — matches the most recent job whose name contains the given text).',
     input_schema: {
       type: 'object',
-      required: ['job_id'],
-      properties: { job_id: { type: 'string' } },
+      properties: {
+        job_id:   { type: 'string', description: 'Exact CUID. Use this when you have the ID from create_extraction_job.' },
+        job_name: { type: 'string', description: 'Partial job name. Resolves to the most recent matching job.' },
+      },
     },
-    async handler({ job_id }, ctx) {
-      const job = await prisma.extractionJob.findFirst({
-        where: { id: job_id, teamId: ctx.teamId },
-        include: { _count: { select: { leads: true } } },
-      });
+    async handler({ job_id, job_name }, ctx) {
+      let job;
+      if (job_id) {
+        job = await prisma.extractionJob.findFirst({
+          where: { id: job_id, teamId: ctx.teamId },
+          include: { _count: { select: { leads: true } } },
+        });
+      } else if (job_name) {
+        // Case-insensitive substring match, newest first. Way more forgiving
+        // than exact equality which never worked in practice.
+        job = await prisma.extractionJob.findFirst({
+          where: { teamId: ctx.teamId, name: { contains: job_name, mode: 'insensitive' } },
+          orderBy: { createdAt: 'desc' },
+          include: { _count: { select: { leads: true } } },
+        });
+      } else {
+        // Neither provided — fall back to "most recent job on this team".
+        job = await prisma.extractionJob.findFirst({
+          where: { teamId: ctx.teamId },
+          orderBy: { createdAt: 'desc' },
+          include: { _count: { select: { leads: true } } },
+        });
+      }
       if (!job) throw Errors.notFound('Job');
       return {
         job_id: job.id,
