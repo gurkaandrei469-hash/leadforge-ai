@@ -130,11 +130,28 @@ function evalCondition(c: Condition, lead: Record<string, any>): boolean {
   const col = FIELD_MAP[c.field] ?? ARRAY_FIELDS[c.field] ?? c.field;
   const v = lead[col];
   switch (c.operator) {
-    case 'eq': return v === c.value;
-    case 'neq': return v !== c.value;
-    case 'in': return Array.isArray(c.value) && c.value.includes(v);
-    case 'nin': return Array.isArray(c.value) && !c.value.includes(v);
-    case 'contains': return typeof v === 'string' && v.toLowerCase().includes(String(c.value).toLowerCase());
+    // Array-valued lead fields (matchedKeywords, technologies) need element-wise
+    // semantics — comparing an array to a scalar with === always returns false,
+    // which silently filtered out every keyword-tagged lead before this fix.
+    case 'eq':
+      if (Array.isArray(v)) return v.includes(c.value as any);
+      return v === c.value;
+    case 'neq':
+      if (Array.isArray(v)) return !v.includes(c.value as any);
+      return v !== c.value;
+    case 'in':
+      if (!Array.isArray(c.value)) return false;
+      // Array field: ANY overlap counts. Scalar field: standard "field in set".
+      if (Array.isArray(v)) return (c.value as any[]).some((x) => v.includes(x));
+      return (c.value as any[]).includes(v);
+    case 'nin':
+      if (!Array.isArray(c.value)) return true;
+      if (Array.isArray(v)) return !(c.value as any[]).some((x) => v.includes(x));
+      return !(c.value as any[]).includes(v);
+    case 'contains':
+      // Array field: contains means "array has an element equal to value"
+      if (Array.isArray(v)) return v.some((x) => typeof x === 'string' && x.toLowerCase().includes(String(c.value).toLowerCase()));
+      return typeof v === 'string' && v.toLowerCase().includes(String(c.value).toLowerCase());
     case 'starts_with': return typeof v === 'string' && v.toLowerCase().startsWith(String(c.value).toLowerCase());
     case 'ends_with': return typeof v === 'string' && v.toLowerCase().endsWith(String(c.value).toLowerCase());
     case 'gt': return typeof v === 'number' && v > (c.value as number);
