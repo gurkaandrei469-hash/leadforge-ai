@@ -33,6 +33,9 @@ interface AssistantChatProps {
   variant?: 'full' | 'compact';
   headerExtra?: React.ReactNode;
   persistKey?: string;
+  /** When true, the chat's built-in header (brand + model picker) is suppressed.
+   *  Used by the mobile widget which renders its own prominent header outside. */
+  hideInternalHeader?: boolean;
 }
 
 const DEFAULT_SUGGESTIONS = [
@@ -72,7 +75,7 @@ function labelForTool(name: string, state: 'running' | 'done' | 'failed'): strin
   return 'Done';
 }
 
-export function AssistantChat({ variant = 'full', headerExtra, persistKey }: AssistantChatProps) {
+export function AssistantChat({ variant = 'full', headerExtra, persistKey, hideInternalHeader = false }: AssistantChatProps) {
   const { getToken } = useAuth();
   const api = useApi();
 
@@ -249,7 +252,8 @@ export function AssistantChat({ variant = 'full', headerExtra, persistKey }: Ass
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
+      {/* Header — suppressed in the mobile widget (it renders its own bigger header) */}
+      {!hideInternalHeader && (
       <div className="flex items-center justify-between border-b border-border/60 bg-gradient-to-r from-primary/5 to-transparent px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -335,6 +339,7 @@ export function AssistantChat({ variant = 'full', headerExtra, persistKey }: Ass
           {headerExtra}
         </div>
       </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
