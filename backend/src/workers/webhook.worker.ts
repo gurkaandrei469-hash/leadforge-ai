@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import axios from 'axios';
 import crypto from 'node:crypto';
-import { redis } from '../db/redis.js';
+import { redis, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 
 export const webhookWorker = new Worker(
@@ -25,5 +25,5 @@ export const webhookWorker = new Worker(
       }
     }
   },
-  { connection: redis, concurrency: 10 },
+  { connection: bullConnection, concurrency: 10 },
 );

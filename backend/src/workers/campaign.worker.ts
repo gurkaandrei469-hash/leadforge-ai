@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redis } from '../db/redis.js';
+import { redis, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 import { logger } from '../utils/logger.js';
 import { sendOne, renderTemplate, renderHtml, generateMessageId } from '../services/email-sender.js';
@@ -206,5 +206,5 @@ export const campaignWorker = new Worker(
     // Re-queue ourselves to keep going
     await campaignQueue.add('tick', { campaignId }, { delay: TICK_INTERVAL_MS });
   },
-  { connection: redis, concurrency: 2 },
+  { connection: bullConnection, concurrency: 2 },
 );

@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redis } from '../db/redis.js';
+import { redis, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 import { classifyLead } from '../services/ai.classifier.js';
 
@@ -25,5 +25,5 @@ export const enrichmentWorker = new Worker(
       },
     });
   },
-  { connection: redis, concurrency: 5 },
+  { connection: bullConnection, concurrency: 5 },
 );

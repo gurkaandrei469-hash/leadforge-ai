@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { redis } from '../db/redis.js';
+import { redis, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 import { compileFilterToWhere } from '../filters/engine.js';
 import { logger } from '../utils/logger.js';
@@ -74,5 +74,5 @@ export const exportWorker = new Worker(
 
     logger.info({ exportId, leadCount: rows.length, size: stat.size }, 'Export ready');
   },
-  { connection: redis, concurrency: 3 },
+  { connection: bullConnection, concurrency: 3 },
 );

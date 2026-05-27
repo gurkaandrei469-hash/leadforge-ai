@@ -1,11 +1,11 @@
 import { Worker, Job, Queue } from 'bullmq';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { redis } from '../db/redis.js';
+import { redis, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 import { logger } from '../utils/logger.js';
 
-export const imapPollQueue = new Queue('imap-poll', { connection: redis });
+export const imapPollQueue = new Queue('imap-poll', { connection: bullConnection });
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // poll each account every 5 minutes
 const LOOKBACK_DAYS = 30; // only scan messages from the last 30 days
@@ -127,7 +127,7 @@ export const imapPollWorker = new Worker(
     // Re-schedule next poll for this account
     await imapPollQueue.add('poll', { accountId: account.id }, { delay: POLL_INTERVAL_MS });
   },
-  { connection: redis, concurrency: 3 },
+  { connection: bullConnection, concurrency: 3 },
 );
 
 /**

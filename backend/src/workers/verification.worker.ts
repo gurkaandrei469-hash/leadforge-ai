@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redis } from '../db/redis.js';
+import { redis, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 import { verifyEmail } from '../verification/verifier.js';
 
@@ -52,7 +52,7 @@ export const verificationWorker = new Worker(
     });
   },
   {
-    connection: redis,
+    connection: bullConnection,
     concurrency: 20,
     limiter: { max: 30, duration: 1000 },
   },

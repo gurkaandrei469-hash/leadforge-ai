@@ -1,7 +1,10 @@
 import { Queue, QueueEvents } from 'bullmq';
-import { redis } from '../db/redis.js';
+import { bullConnection } from '../db/redis.js';
 
-const connection = redis;
+// Pass connection OPTIONS (not an existing ioredis instance) so BullMQ creates
+// a dedicated connection per Queue/Worker. Sharing one instance with workers
+// caused starvation on Upstash — see db/redis.ts for the long story.
+const connection = bullConnection;
 
 export const extractionQueue = new Queue('extraction', { connection });
 export const verificationQueue = new Queue('verification', { connection });

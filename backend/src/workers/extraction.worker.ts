@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redis, redisPub } from '../db/redis.js';
+import { redis, redisPub, bullConnection } from '../db/redis.js';
 import { prisma } from '../db/prisma.js';
 import { logger } from '../utils/logger.js';
 import { runExtraction } from '../scraping/orchestrator.js';
@@ -65,7 +65,7 @@ export const extractionWorker = new Worker(
     }
   },
   {
-    connection: redis,
+    connection: bullConnection,
     concurrency: 5,
     limiter: { max: 10, duration: 1000 },
   },
