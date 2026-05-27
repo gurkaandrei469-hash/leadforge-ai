@@ -28,6 +28,10 @@ export const viewport: Viewport = {
   maximumScale: 5,
   // Critical for iOS — sizes the layout to the visual viewport, not the bigger initial one
   viewportFit: 'cover',
+  // Tell Chrome/Edge/modern Safari to resize layout when the on-screen keyboard appears,
+  // instead of overlaying it. This makes 100dvh actually shrink when keyboard opens, so
+  // the assistant chat input stays above the keyboard automatically.
+  interactiveWidget: 'resizes-content',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },

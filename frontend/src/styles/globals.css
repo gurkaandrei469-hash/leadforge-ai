@@ -194,9 +194,56 @@
   }
   .animate-float { animation: float-slow 6s ease-in-out infinite; }
 
+  /* ── AI assistant robot mascot animations ────────────────────────────── */
+
+  /* Idle bob — the FAB gently floats up and down to attract attention */
+  @keyframes robot-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); }
+  }
+  .animate-robot-bob { animation: robot-bob 2.6s ease-in-out infinite; }
+
+  /* Eyes blink every ~4 seconds, very fast scaleY collapse */
+  @keyframes robot-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95%, 97%      { transform: scaleY(0.08); }
+  }
+  .animate-robot-blink { animation: robot-blink 4s ease-in-out infinite; transform-box: fill-box; }
+
+  /* Antenna bulb pulses (color + scale) — signals "I'm alive" */
+  @keyframes antenna-bulb {
+    0%, 100% { opacity: 1;   transform: scale(1); }
+    50%      { opacity: 0.55; transform: scale(1.35); }
+  }
+  .animate-antenna-bulb {
+    animation: antenna-bulb 1.8s ease-in-out infinite;
+    transform-origin: center;
+    transform-box: fill-box;
+  }
+
+  /* Slow ping behind the FAB — diffuse aura that pulses outward */
+  @keyframes ping-slow {
+    0%   { transform: scale(1);   opacity: 0.55; }
+    80%  { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+  .animate-ping-slow { animation: ping-slow 2.2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+  /* Hint bubble gentle bob, opposite phase to the robot so they feel coupled */
+  @keyframes hint-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(4px); }
+  }
+  .animate-hint-bob { animation: hint-bob 2.6s ease-in-out infinite; }
+
+  /* min-h-touch — semantic alias of the `.tap` class above for ad-hoc inline use */
+  .min-h-touch { min-height: 44px; }
+
   /* Reduced motion: turn off decorative animations */
   @media (prefers-reduced-motion: reduce) {
-    .animate-marquee, .animate-float { animation: none; }
+    .animate-marquee, .animate-float,
+    .animate-robot-bob, .animate-robot-blink, .animate-antenna-bulb,
+    .animate-ping-slow, .animate-hint-bob { animation: none; }
     * { transition-duration: 0s !important; animation-duration: 0s !important; }
   }
 }
