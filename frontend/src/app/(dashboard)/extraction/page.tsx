@@ -37,7 +37,9 @@ export default function NewExtractionPage() {
   const api = useApi();
   const router = useRouter();
   const [name, setName] = useState('');
-  const [selectedSources, setSources] = useState<string[]>(['CUSTOM_URL_LIST']);
+  // Default to broad-yield search sources — most users open this page knowing
+  // a niche/keyword, not a URL list. CUSTOM_URL_LIST stays toggleable for power users.
+  const [selectedSources, setSources] = useState<string[]>(['WEB_SEARCH', 'DIRECTORY', 'BLOG']);
   const [urls, setUrls] = useState('');
   const [filters, setFilters] = useState<FilterRow[]>([]);
   const [target, setTarget] = useState(100);
@@ -129,7 +131,8 @@ export default function NewExtractionPage() {
                   type="button"
                   key={s}
                   onClick={() => toggleSource(s)}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                  // py-2 (~40px tall with text-sm) clears iOS HIG 44pt minimum touch target.
+                  className={`min-h-touch rounded-full border px-3 py-2 text-xs transition-colors active:scale-95 sm:py-1 ${
                     on ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'
                   }`}
                 >
@@ -172,7 +175,13 @@ export default function NewExtractionPage() {
               min={1}
               max={50000}
               value={target}
-              onChange={(e) => setTarget(parseInt(e.target.value || '0'))}
+              onChange={(e) => {
+                // Clamp to [1, 50000]; treat blank / NaN as the safe default (100) instead of 0
+                // — backend Zod rejects 0 and mobile users often clear and re-type.
+                const n = parseInt(e.target.value, 10);
+                if (isNaN(n)) setTarget(100);
+                else setTarget(Math.max(1, Math.min(50000, n)));
+              }}
               className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>
@@ -206,9 +215,14 @@ export default function NewExtractionPage() {
         {filters.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No filters — every email found will be saved. Add some to narrow results.</p>
         ) : (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-3">
             {filters.map((f, i) => (
-              <div key={i} className="flex gap-2">
+              // Mobile: stack the row into a 2-col grid (field + op) with input + delete below.
+              // Desktop (sm+): single horizontal row as before.
+              <div
+                key={i}
+                className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-2 sm:flex sm:items-center sm:bg-transparent sm:p-0"
+              >
                 <select
                   value={f.field}
                   onChange={(e) => {
@@ -216,7 +230,7 @@ export default function NewExtractionPage() {
                     n[i] = { ...n[i]!, field: e.target.value };
                     setFilters(n);
                   }}
-                  className="rounded-md border bg-background px-2 py-1 text-sm"
+                  className="rounded-md border bg-background px-2 py-2 text-sm sm:flex-none sm:py-1"
                 >
                   {FILTER_FIELDS.map((x) => <option key={x}>{x}</option>)}
                 </select>
@@ -227,7 +241,7 @@ export default function NewExtractionPage() {
                     n[i] = { ...n[i]!, op: e.target.value };
                     setFilters(n);
                   }}
-                  className="rounded-md border bg-background px-2 py-1 text-sm"
+                  className="rounded-md border bg-background px-2 py-2 text-sm sm:flex-none sm:py-1"
                 >
                   {OPERATORS.map((x) => <option key={x}>{x}</option>)}
                 </select>
@@ -238,15 +252,17 @@ export default function NewExtractionPage() {
                     n[i] = { ...n[i]!, value: e.target.value };
                     setFilters(n);
                   }}
-                  className="flex-1 rounded-md border bg-background px-3 py-1 text-sm"
+                  className="col-span-2 rounded-md border bg-background px-3 py-2 text-sm sm:col-span-1 sm:flex-1 sm:py-1"
                   placeholder={['in', 'has_any', 'has_all'].includes(f.op) ? 'comma, separated, values' : 'value'}
                 />
                 <button
                   type="button"
                   onClick={() => setFilters(filters.filter((_, j) => j !== i))}
-                  className="rounded-md border p-1.5 hover:bg-accent"
+                  className="col-span-2 inline-flex h-10 items-center justify-center gap-1 rounded-md border text-xs text-muted-foreground hover:bg-accent sm:col-span-1 sm:h-auto sm:w-auto sm:p-1.5"
+                  aria-label="Remove filter"
                 >
                   <X className="h-4 w-4" />
+                  <span className="sm:hidden">Remove filter</span>
                 </button>
               </div>
             ))}
@@ -254,12 +270,13 @@ export default function NewExtractionPage() {
         )}
       </section>
 
-      <div className="flex justify-end gap-3">
+      {/* Submit row — mobile gets a sticky full-width bar so the button is always thumb-reachable. */}
+      <div className="sticky bottom-0 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur safe-bottom sm:static sm:mx-0 sm:flex sm:justify-end sm:border-t-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
         <button
           type="button"
           disabled={submitting}
           onClick={handleSubmit}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-sm transition-opacity active:scale-[0.98] hover:opacity-90 disabled:opacity-50 sm:w-auto sm:py-2 sm:text-sm"
         >
           {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
           {submitting ? 'Starting…' : 'Start extraction →'}

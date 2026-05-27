@@ -13,3 +13,8 @@ coverage/
 playwright-report/
 test-results/
 /exports/
+.deploy-secrets
+/tmp/leadforge-*.log
+.railway-api-env.txt
+.railway-worker-env.txt
+.vercel-env.txt

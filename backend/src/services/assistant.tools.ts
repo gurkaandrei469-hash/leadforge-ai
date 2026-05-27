@@ -24,12 +24,33 @@ export interface Tool {
 
 // ─────────────────────────── TOOL HANDLERS ───────────────────────────
 
-const createExtractionInput = z.object({
-  name: z.string().min(2).max(120),
-  urls: z.array(z.string().url()).min(1).max(200),
-  target_leads: z.number().int().min(1).max(5000).default(50),
-  priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).default('NORMAL'),
-});
+// Two modes the assistant supports:
+//   1. keywords-based — assistant runs DDG/Brave/Serper over the keyword set and
+//      crawls discovered URLs (no URL list needed from the user)
+//   2. URL-list — explicit `urls` array supplied (existing behaviour)
+// At least ONE of `keywords` or `urls` must be present. Refined below.
+const VALID_SOURCES = [
+  'WEB_SEARCH', 'DIRECTORY', 'COMPANY_PAGE', 'BLOG', 'FORUM',
+  'SOCIAL_LINKEDIN', 'SOCIAL_TWITTER', 'CONTACT_PAGE', 'LISTING', 'DATABASE',
+  'CUSTOM_URL_LIST',
+] as const;
+
+const createExtractionInput = z
+  .object({
+    name: z.string().min(2).max(120),
+    // Mobile/chat-driven flow: free-text keywords ("B2B SaaS founders in Berlin").
+    keywords: z.array(z.string().min(2)).min(1).max(20).optional(),
+    // Power-user flow: explicit URLs to scrape.
+    urls: z.array(z.string().url()).min(1).max(200).optional(),
+    // Optional source-type list. Default depends on which mode is used.
+    sources: z.array(z.enum(VALID_SOURCES)).min(1).max(11).optional(),
+    target_leads: z.number().int().min(1).max(5000).default(50),
+    priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).default('NORMAL'),
+  })
+  .refine((d) => (d.keywords && d.keywords.length > 0) || (d.urls && d.urls.length > 0), {
+    message: 'Provide either `keywords` (for keyword-based extraction) or `urls` (for URL-list extraction).',
+    path: ['keywords'],
+  });
 
 const searchLeadsInput = z.object({
   query: z.string().optional(),
@@ -53,13 +74,34 @@ export const tools: Tool[] = [
   {
     name: 'create_extraction_job',
     description:
-      'Start a new lead extraction job. The user provides a list of URLs to scrape, a name, and an optional target lead count. The job runs asynchronously in the background.',
+      'Start a lead extraction job. Two modes: ' +
+      '(1) keyword search — pass `keywords` (e.g. ["SaaS marketing agency", "B2B sales consultant"]) and the system runs web search across configured sources to discover URLs automatically. ' +
+      '(2) URL list — pass an explicit `urls` array if the user provided specific pages to scrape. ' +
+      'At least one of `keywords` or `urls` is required. The job runs asynchronously.',
     input_schema: {
       type: 'object',
-      required: ['name', 'urls'],
+      required: ['name'],
       properties: {
-        name: { type: 'string', description: 'Short descriptive name for the job' },
-        urls: { type: 'array', items: { type: 'string', format: 'uri' }, description: 'URLs to scrape (1-200)' },
+        name: { type: 'string', description: 'Short descriptive name for the job (e.g. "SaaS founders Q2")' },
+        keywords: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Free-text search keywords. Use this when the user says "find me X" without providing URLs.',
+        },
+        urls: {
+          type: 'array',
+          items: { type: 'string', format: 'uri' },
+          description: 'Explicit URLs to scrape (1-200). Use ONLY if the user provided URLs.',
+        },
+        sources: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['WEB_SEARCH', 'DIRECTORY', 'COMPANY_PAGE', 'BLOG', 'FORUM',
+                   'SOCIAL_LINKEDIN', 'SOCIAL_TWITTER', 'CONTACT_PAGE', 'LISTING', 'DATABASE', 'CUSTOM_URL_LIST'],
+          },
+          description: 'Source channels to extract from. Defaults: ["WEB_SEARCH","DIRECTORY","BLOG"] for keywords, ["CUSTOM_URL_LIST"] for urls.',
+        },
         target_leads: { type: 'integer', default: 50, description: 'Target number of leads to extract' },
         priority: { type: 'string', enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'], default: 'NORMAL' },
       },
@@ -72,13 +114,36 @@ export const tools: Tool[] = [
         throw Errors.paymentRequired(`Insufficient credits (need ${body.target_leads}, have ${team.creditsTotal - team.creditsUsed})`);
       }
 
+      // Decide sources + build filter tree.
+      // Keyword mode picks broad-yield defaults; URL mode locks to CUSTOM_URL_LIST.
+      const hasUrls = body.urls && body.urls.length > 0;
+      const hasKeywords = body.keywords && body.keywords.length > 0;
+
+      let sources: string[];
+      if (body.sources?.length) {
+        sources = body.sources;
+      } else if (hasKeywords && !hasUrls) {
+        sources = ['WEB_SEARCH', 'DIRECTORY', 'BLOG'];
+      } else if (hasUrls && !hasKeywords) {
+        sources = ['CUSTOM_URL_LIST'];
+      } else {
+        // Both supplied — broad search + the user's URLs.
+        sources = ['WEB_SEARCH', 'DIRECTORY', 'BLOG', 'CUSTOM_URL_LIST'];
+      }
+
+      const filterTree: any = { AND: [] };
+      if (hasKeywords) {
+        filterTree.AND.push({ field: 'keyword', operator: 'in', value: body.keywords });
+      }
+      if (hasUrls) filterTree.__urls__ = body.urls;
+
       const job = await prisma.extractionJob.create({
         data: {
           teamId: ctx.teamId,
           createdById: ctx.userId,
           name: body.name,
-          sources: ['CUSTOM_URL_LIST'],
-          filters: { __urls__: body.urls, AND: [] } as any,
+          sources: sources as any,
+          filters: filterTree,
           targetLeads: body.target_leads,
           priority: body.priority,
           status: 'QUEUED',
@@ -90,12 +155,18 @@ export const tools: Tool[] = [
       });
       await prisma.extractionJob.update({ where: { id: job.id }, data: { bullJobId: bull.id?.toString() } });
 
+      // Tailor the summary so the assistant can echo back a useful confirmation.
+      const inputDescription = hasKeywords
+        ? `keywords: ${body.keywords!.slice(0, 3).join(', ')}${body.keywords!.length > 3 ? '…' : ''}`
+        : `${body.urls!.length} URL${body.urls!.length === 1 ? '' : 's'}`;
+
       return {
         job_id: job.id,
         name: job.name,
         status: job.status,
         target_leads: job.targetLeads,
-        message: `Job queued. ${body.urls.length} URLs targeted. Check status with get_job_status.`,
+        sources,
+        message: `Job queued. Mode: ${inputDescription}. Sources: ${sources.join(', ')}. Check status with get_job_status.`,
       };
     },
   },
