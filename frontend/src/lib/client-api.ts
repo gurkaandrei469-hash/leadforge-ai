@@ -1,8 +1,24 @@
 'use client';
 import { useAuth } from '@clerk/nextjs';
+import { toast } from 'sonner';
 
 // Goes through Next.js rewrite (see next.config.mjs) — same-origin, no CORS hassle
 const BASE = '/api/backend';
+
+// One global rate-limit toast at most every 8s. Without this, when a 429 cascade
+// hits (workspace switcher, dashboard tiles, assistant widget all firing on the
+// same render) the user got 5+ stacked "Too many requests" toasts instead of one.
+let lastRateLimitToastAt = 0;
+function showRateLimitToastOnce() {
+  const now = Date.now();
+  if (now - lastRateLimitToastAt < 8000) return;
+  lastRateLimitToastAt = now;
+  toast.error('Hitting our request limit — pausing briefly.', {
+    id: 'rate-limit',
+    description: 'Your work is safe. Try again in a few seconds.',
+    duration: 4000,
+  });
+}
 
 // localStorage key for the active workspace. The backend's auth middleware reads
 // the x-team-id header and falls back to "first team I'm a member of" if absent.
@@ -67,6 +83,13 @@ export function useApi() {
       let body: unknown;
       try { body = await res.json(); } catch { body = await res.text(); }
       const msg = (body as any)?.error?.message ?? `API ${res.status}`;
+      // Rate limit: show ONE deduplicated toast (callers don't need to handle this)
+      // and rewrite the error message so any caller-side toast.error(e.message) shows
+      // the same friendly text instead of a cryptic "Too many requests".
+      if (res.status === 429) {
+        showRateLimitToastOnce();
+        throw new ApiError(res.status, 'Briefly rate-limited — please try again in a moment.', body);
+      }
       throw new ApiError(res.status, msg, body);
     }
     if (res.status === 204) return null;

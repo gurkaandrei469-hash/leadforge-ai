@@ -51,7 +51,13 @@ export function WorkspaceSwitcher({ initialTeam }: { initialTeam: { id: string; 
       setWorkspaces(res.teams);
       setLoaded(true);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Failed to load workspaces');
+      // 429 is handled centrally in client-api.ts (deduplicated toast).
+      // Anything else gets a normal error toast.
+      if (e instanceof ApiError && e.status !== 429) {
+        toast.error(e.message);
+      } else if (!(e instanceof ApiError)) {
+        toast.error('Failed to load workspaces');
+      }
     }
   }
 

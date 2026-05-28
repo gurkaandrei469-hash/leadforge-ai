@@ -242,7 +242,11 @@ export const tools: Tool[] = [
   {
     name: 'search_leads',
     description:
-      'Search the user\'s extracted leads. Supports filtering by job, verification status, quality score, country, technology, or a free-text query (matched against email/name/company).',
+      'Search the user\'s ALREADY-EXTRACTED leads stored in their workspace. ' +
+      'Use this when the user asks about leads they already have (e.g. "show me my CFO leads", ' +
+      '"how many valid emails do I have", "find leads at stripe.com in my database"). ' +
+      'DO NOT use this to find brand-new leads from the web — that is what create_extraction_job is for. ' +
+      'Supports filtering by job, verification status, quality score, country, technology, or a free-text query (email/name/company).',
     input_schema: {
       type: 'object',
       properties: {
