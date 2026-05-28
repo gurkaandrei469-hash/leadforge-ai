@@ -55,9 +55,13 @@ export function WorkspaceSwitcher({ initialTeam }: { initialTeam: { id: string; 
     }
   }
 
+  // Load once on mount so the trigger button shows the real workspace name
+  // even before the user opens the dropdown. Without this it got stuck on
+  // "Loading…" forever whenever the SSR initialTeam prop was unavailable
+  // (e.g. /auth/me hit a transient rate-limit during layout hydration).
   useEffect(() => {
-    if (open && !loaded) loadWorkspaces();
-  }, [open]);
+    if (!loaded) loadWorkspaces();
+  }, [loaded]);
 
   // Close on outside click
   useEffect(() => {

@@ -49,7 +49,10 @@ const schema = z.object({
   PUBLIC_APP_URL: z.string().optional(), // e.g. http://localhost:3000 — front-end origin for post-OAuth redirects
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
-  RATE_LIMIT_MAX: z.coerce.number().default(100),
+  // 600/min — dashboards with multiple tiles + polled workspace switcher +
+  // SSE keep-alive can easily fire 50+ requests per page load without being
+  // abusive. High-frequency endpoints get 4× this internally.
+  RATE_LIMIT_MAX: z.coerce.number().default(600),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
