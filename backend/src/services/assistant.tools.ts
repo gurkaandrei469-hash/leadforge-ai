@@ -110,9 +110,7 @@ export const tools: Tool[] = [
       const body = createExtractionInput.parse(input);
       const team = await prisma.team.findUnique({ where: { id: ctx.teamId } });
       if (!team) throw Errors.notFound('Team');
-      if (team.creditsTotal - team.creditsUsed < body.target_leads) {
-        throw Errors.paymentRequired(`Insufficient credits (need ${body.target_leads}, have ${team.creditsTotal - team.creditsUsed})`);
-      }
+      // Lead extraction is unlimited for all users — no credit gate.
 
       // Decide sources + build filter tree.
       // Keyword mode picks broad-yield defaults; URL mode locks to CUSTOM_URL_LIST.
@@ -378,12 +376,12 @@ export const tools: Tool[] = [
 
   {
     name: 'get_team_usage',
-    description: 'Get the team\'s credit balance, plan tier, and lead/job counts.',
+    description: 'Get the team\'s plan tier and lifetime usage stats. Lead extraction has no quota — every user gets unlimited extractions.',
     input_schema: { type: 'object', properties: {} },
     async handler(_input, ctx) {
       const team = await prisma.team.findUnique({
         where: { id: ctx.teamId },
-        select: { name: true, planTier: true, creditsTotal: true, creditsUsed: true },
+        select: { name: true, planTier: true },
       });
       const [leadCount, jobCount, runningJobs] = await Promise.all([
         prisma.lead.count({ where: { teamId: ctx.teamId } }),
@@ -393,10 +391,8 @@ export const tools: Tool[] = [
       return {
         workspace: team?.name,
         plan: team?.planTier,
-        credits_total: team?.creditsTotal,
-        credits_used: team?.creditsUsed,
-        credits_remaining: (team?.creditsTotal ?? 0) - (team?.creditsUsed ?? 0),
-        total_leads: leadCount,
+        extractions_unlimited: true,
+        total_leads_extracted: leadCount,
         total_jobs: jobCount,
         jobs_running_now: runningJobs,
       };

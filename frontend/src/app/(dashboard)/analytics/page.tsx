@@ -100,10 +100,10 @@ export default function AnalyticsPage() {
       icon: Activity, tint: 'from-violet-500/20 to-violet-500/0', color: 'text-violet-500',
     },
     {
-      label: 'Credits remaining',
-      value: overview?.team
-        ? Math.max(0, overview.team.creditsTotal - overview.team.creditsUsed).toLocaleString()
-        : '—',
+      // Lead extraction has no quota — explicit "Unlimited" reads better than
+      // the old subtraction which would have shown a giant 999,999,999 number.
+      label: 'Extraction quota',
+      value: 'Unlimited',
       delta: overview?.team?.planTier ?? 'FREE',
       positive: true,
       icon: TrendingUp, tint: 'from-amber-500/20 to-amber-500/0', color: 'text-amber-500',

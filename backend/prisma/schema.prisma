@@ -57,7 +57,10 @@ model Team {
   logoUrl         String?
   ownerId         String
   planTier        PlanTier        @default(FREE)
-  creditsTotal    Int             @default(100)
+  // Lead extraction is unlimited for every user. These columns remain on the
+  // table for historical analytics and any future paid-tier metering, but no
+  // code path gates on the remaining balance.
+  creditsTotal    Int             @default(999999999)
   creditsUsed     Int             @default(0)
   creditsResetAt  DateTime?
   billingEmail    String?

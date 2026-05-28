@@ -127,7 +127,9 @@ export function Sidebar({ team, onNavigate }: { team: Team | null; onNavigate?: 
             className="block rounded-xl border bg-grad-brand p-4 text-white shadow-sm transition-transform hover:scale-[1.02]"
           >
             <div className="text-sm font-semibold">Upgrade to Pro</div>
-            <div className="mt-1 text-xs text-white/80">12,000 leads · AI scoring · HubSpot sync</div>
+            {/* Extraction is unlimited on every plan now — the upgrade pitch
+                focuses on collaboration & integration value, not lead caps. */}
+            <div className="mt-1 text-xs text-white/80">AI scoring · HubSpot sync · Priority support</div>
             <div className="mt-2 inline-flex items-center gap-1 text-xs font-semibold">
               See plans →
             </div>

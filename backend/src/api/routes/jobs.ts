@@ -29,9 +29,8 @@ r.post('/', authenticate, async (req, res, next) => {
 
     const team = await prisma.team.findUnique({ where: { id: req.auth!.teamId } });
     if (!team) throw Errors.notFound('Team');
-    if (team.creditsTotal - team.creditsUsed < body.targetLeads) {
-      throw Errors.paymentRequired(`Need ${body.targetLeads} credits, have ${team.creditsTotal - team.creditsUsed}`);
-    }
+    // Lead extraction is unlimited for all users. The `creditsTotal`/`creditsUsed`
+    // columns remain on the team for usage analytics but no longer gate job creation.
 
     const job = await prisma.extractionJob.create({
       data: {

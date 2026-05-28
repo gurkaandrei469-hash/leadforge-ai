@@ -32,9 +32,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     team = undefined;
   }
 
-  const used = team?.creditsUsed ?? 0;
-  const total = team?.creditsTotal ?? 0;
-  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  // Lead extraction is unlimited on every plan — the old credit pill ("12 / 100")
+  // was misleading and stressed first-time users. Replaced with a subtle
+  // "Unlimited extraction" badge that just confirms there's no cap.
 
   return (
     <>
@@ -44,17 +44,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         topBarSlot={
           <>
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="hidden flex-col sm:flex">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Credits</span>
-                <span className="text-sm font-semibold tabular-nums">
-                  {used.toLocaleString()} <span className="text-muted-foreground">/ {total.toLocaleString()}</span>
+              <div className="hidden items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 sm:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">
+                  Unlimited extraction
                 </span>
-              </div>
-              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted sm:h-2 sm:w-32">
-                <div
-                  className="h-full rounded-full bg-grad-brand transition-all duration-500"
-                  style={{ width: `${pct}%` }}
-                />
               </div>
             </div>
             <UserButton
