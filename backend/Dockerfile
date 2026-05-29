@@ -34,30 +34,12 @@ COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
-# Apply pending DB migrations on container start, then exec the actual server.
-# This way the API container handles schema-up on every deploy — no separate
-# migrate step needed in CI.
-COPY <<'SH' /app/start-api.sh
-#!/bin/sh
-set -e
-echo "→ Applying database migrations…"
-npx prisma migrate deploy
-echo "→ Starting API server"
-exec node dist/server.js
-SH
-RUN chmod +x /app/start-api.sh
-
-COPY <<'SH' /app/start-worker.sh
-#!/bin/sh
-set -e
-# Workers don't need to re-run migrations (the API container handles that),
-# but they DO need the schema to be up-to-date. In case the worker service
-# boots first on a fresh deploy, the deploy is idempotent.
-npx prisma migrate deploy || true
-echo "→ Starting BullMQ workers"
-exec node dist/workers/index.js
-SH
-RUN chmod +x /app/start-worker.sh
+# Copy the start scripts as regular files (avoiding `COPY <<EOF` heredoc syntax
+# which Railway's CLI-uploaded builds appear to choke on with the BuildKit
+# version they ship). The scripts live in backend/scripts/ and are checked in.
+COPY scripts/start-api.sh /app/start-api.sh
+COPY scripts/start-worker.sh /app/start-worker.sh
+RUN chmod +x /app/start-api.sh /app/start-worker.sh
 
 EXPOSE 4000
 # Tini reaps zombies + forwards SIGTERM properly for graceful shutdown
