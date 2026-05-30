@@ -249,7 +249,8 @@ export default function DashboardPage() {
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                     <th className="px-2 pb-2 font-semibold">Lead</th>
-                    <th className="px-2 pb-2 font-semibold">Company</th>
+                    {/* Company collapses into the Lead cell on small screens */}
+                    <th className="hidden px-2 pb-2 font-semibold sm:table-cell">Company</th>
                     <th className="px-2 pb-2 font-semibold">Score</th>
                     <th className="px-2 pb-2 font-semibold">Status</th>
                   </tr>
@@ -266,7 +267,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-2 py-3 text-sm">{l.companyName ?? '—'}</td>
+                      <td className="hidden px-2 py-3 text-sm sm:table-cell">{l.companyName ?? '—'}</td>
                       <td className="px-2 py-3">
                         <div className="inline-flex items-center gap-1.5 text-sm font-semibold tabular-nums">
                           <div className="relative h-1.5 w-12 overflow-hidden rounded-full bg-muted">

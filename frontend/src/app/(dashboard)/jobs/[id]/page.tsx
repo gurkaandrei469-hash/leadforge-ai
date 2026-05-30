@@ -281,7 +281,7 @@ export default function JobDetailPage() {
                 <thead className="sticky top-0 bg-muted/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur-sm">
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">Lead</th>
-                    <th className="font-semibold">Title</th>
+                    <th className="hidden font-semibold md:table-cell">Title</th>
                     <th className="font-semibold">Score</th>
                     <th className="px-4 font-semibold">Status</th>
                   </tr>
@@ -298,7 +298,7 @@ export default function JobDetailPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="max-w-[180px] truncate text-xs text-muted-foreground">{l.jobTitle ?? '—'}</td>
+                      <td className="hidden max-w-[180px] truncate text-xs text-muted-foreground md:table-cell">{l.jobTitle ?? '—'}</td>
                       <td>
                         {l.qualityScore != null ? (
                           <span className="inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums">

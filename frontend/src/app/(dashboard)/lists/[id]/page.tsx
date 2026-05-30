@@ -100,10 +100,10 @@ export default function ListDetailPage() {
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/30 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="w-12 px-4 py-3"></th>
+                <th className="w-10 px-3 py-3 sm:w-12 sm:px-4"></th>
                 <th className="px-2 py-3 font-semibold">Lead</th>
-                <th className="px-2 py-3 font-semibold">Title</th>
-                <th className="px-2 py-3 font-semibold">Company</th>
+                <th className="hidden px-2 py-3 font-semibold lg:table-cell">Title</th>
+                <th className="hidden px-2 py-3 font-semibold md:table-cell">Company</th>
                 <th className="px-2 py-3 font-semibold">Score</th>
                 <th className="px-2 py-3 font-semibold">Status</th>
               </tr>
@@ -134,8 +134,8 @@ export default function ListDetailPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="max-w-[180px] truncate px-2 py-2.5 text-xs text-muted-foreground">{l.jobTitle ?? '—'}</td>
-                  <td className="px-2 py-2.5 text-sm">{l.companyName ?? '—'}</td>
+                  <td className="hidden max-w-[180px] truncate px-2 py-2.5 text-xs text-muted-foreground lg:table-cell">{l.jobTitle ?? '—'}</td>
+                  <td className="hidden px-2 py-2.5 text-sm md:table-cell">{l.companyName ?? '—'}</td>
                   <td className="px-2 py-2.5">
                     {l.qualityScore != null ? (
                       <div className="inline-flex items-center gap-2 text-xs font-semibold tabular-nums">

@@ -150,8 +150,8 @@ export default function JobsPage() {
           </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-card scroll-touch">
-          <table className="w-full min-w-[860px] text-sm">
+        <div className="overflow-hidden rounded-lg border bg-card">
+          <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left">
               <tr>
                 <th className="w-10 p-3">
@@ -162,13 +162,17 @@ export default function JobsPage() {
                     className="h-4 w-4 cursor-pointer rounded accent-primary"
                   />
                 </th>
+                {/* Always: Name, Status, Leads, Actions
+                    md+: + Progress
+                    lg+: + Created
+                    xl+: + Pages, Priority */}
                 <th className="p-3">Name</th>
                 <th>Status</th>
-                <th>Progress</th>
+                <th className="hidden md:table-cell">Progress</th>
                 <th>Leads</th>
-                <th>Pages</th>
-                <th>Priority</th>
-                <th>Created</th>
+                <th className="hidden xl:table-cell">Pages</th>
+                <th className="hidden xl:table-cell">Priority</th>
+                <th className="hidden lg:table-cell">Created</th>
                 <th className="text-right pr-3">Actions</th>
               </tr>
             </thead>
@@ -202,7 +206,8 @@ export default function JobsPage() {
                         {j.status}
                       </span>
                     </td>
-                    <td>
+                    {/* md+ : Progress */}
+                    <td className="hidden md:table-cell">
                       <div className="flex items-center gap-2">
                         <div className="h-1.5 w-20 overflow-hidden rounded bg-muted">
                           <div className="h-full bg-primary" style={{ width: `${Math.round(j.progress)}%` }} />
@@ -210,10 +215,13 @@ export default function JobsPage() {
                         <span className="text-xs text-muted-foreground">{Math.round(j.progress)}%</span>
                       </div>
                     </td>
-                    <td className="text-xs">{j.leadsFound} / {j.targetLeads}</td>
-                    <td className="text-xs text-muted-foreground">{j.pagesScraped}</td>
-                    <td className="text-xs">{j.priority}</td>
-                    <td className="text-xs text-muted-foreground">{formatRelative(j.createdAt)}</td>
+                    {/* Always: Leads */}
+                    <td className="whitespace-nowrap text-xs">{j.leadsFound} / {j.targetLeads}</td>
+                    {/* xl+ : Pages, Priority */}
+                    <td className="hidden text-xs text-muted-foreground xl:table-cell">{j.pagesScraped}</td>
+                    <td className="hidden text-xs xl:table-cell">{j.priority}</td>
+                    {/* lg+ : Created */}
+                    <td className="hidden whitespace-nowrap text-xs text-muted-foreground lg:table-cell">{formatRelative(j.createdAt)}</td>
                     <td className="pr-3">
                       <div className="flex items-center justify-end gap-0.5">
                         {/* Inline lifecycle action — status-aware */}

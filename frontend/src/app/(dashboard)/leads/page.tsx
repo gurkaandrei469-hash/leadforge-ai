@@ -277,11 +277,14 @@ export default function LeadsPage() {
           <p className="px-1 text-xs text-muted-foreground">
             <span className="tabular-nums">{total.toLocaleString()}</span> total · showing {leads.length}
           </p>
-          <div className="card-elevated overflow-x-auto scroll-touch">
-            <table className="w-full min-w-[920px] text-sm">
+          {/* No forced min-width — instead progressively reveal columns as the
+              viewport grows. Lead identity + score + status are always visible;
+              everything else is opt-in at md/lg/xl. */}
+          <div className="card-elevated overflow-hidden">
+            <table className="w-full text-sm">
               <thead className="border-b bg-muted/30 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="w-12 px-4 py-3">
+                  <th className="w-10 px-3 py-3 sm:w-12 sm:px-4">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -289,14 +292,19 @@ export default function LeadsPage() {
                       className="h-4 w-4 cursor-pointer rounded border-input accent-primary"
                     />
                   </th>
+                  {/* Always visible */}
                   <th className="px-2 py-3 font-semibold">Lead</th>
-                  <th className="px-2 py-3 font-semibold">Title</th>
-                  <th className="px-2 py-3 font-semibold">Company</th>
-                  <th className="px-2 py-3 font-semibold">Location</th>
-                  <th className="px-2 py-3 font-semibold">Tech</th>
+                  {/* md+ : add Company */}
+                  <th className="hidden px-2 py-3 font-semibold md:table-cell">Company</th>
+                  {/* lg+ : add Title + Tech */}
+                  <th className="hidden px-2 py-3 font-semibold lg:table-cell">Title</th>
+                  <th className="hidden px-2 py-3 font-semibold lg:table-cell">Tech</th>
+                  {/* xl+ : add Location */}
+                  <th className="hidden px-2 py-3 font-semibold xl:table-cell">Location</th>
+                  {/* Always visible */}
                   <th className="px-2 py-3 font-semibold">Score</th>
                   <th className="px-2 py-3 font-semibold">Status</th>
-                  <th className="w-12 px-2 py-3"></th>
+                  <th className="w-10 px-2 py-3 sm:w-12"></th>
                 </tr>
               </thead>
               <tbody>
@@ -310,7 +318,7 @@ export default function LeadsPage() {
                         isChecked ? 'bg-primary/5' : 'hover:bg-muted/40'
                       }`}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 sm:px-4">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -318,37 +326,42 @@ export default function LeadsPage() {
                           className="h-4 w-4 cursor-pointer rounded border-input accent-primary"
                         />
                       </td>
-                      <td className="px-2 py-3">
+                      {/* Lead — always visible. Folds Company in below the name
+                          on small screens (since the Company column is hidden). */}
+                      <td className="min-w-0 px-2 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar name={l.fullName} email={l.email} size="sm" />
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-medium">{l.fullName ?? l.email?.split('@')[0] ?? '—'}</div>
                             <div className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                               <Mail className="h-3 w-3 shrink-0" /> <span className="truncate font-mono">{l.email ?? '—'}</span>
                             </div>
+                            {/* Mobile-only fallback: show Company under the email
+                                when the Company column is hidden (md and below). */}
+                            {l.companyName && (
+                              <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground md:hidden">
+                                <Building2 className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{l.companyName}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="max-w-[180px] truncate px-2 py-3 text-xs text-muted-foreground">
-                        {l.jobTitle ?? '—'}
-                      </td>
-                      <td className="px-2 py-3">
+                      {/* md+ : Company column */}
+                      <td className="hidden min-w-0 px-2 py-3 md:table-cell">
                         {l.companyName ? (
                           <div className="flex items-center gap-1.5 text-xs">
-                            <Building2 className="h-3 w-3 text-muted-foreground" />
+                            <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
                             <span className="truncate font-medium">{l.companyName}</span>
                           </div>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-2 py-3">
-                        {l.country ? (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3" />
-                            <span>{[l.city, l.country].filter(Boolean).join(', ')}</span>
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                      {/* lg+ : Title */}
+                      <td className="hidden max-w-[180px] truncate px-2 py-3 text-xs text-muted-foreground lg:table-cell">
+                        {l.jobTitle ?? '—'}
                       </td>
-                      <td className="px-2 py-3">
+                      {/* lg+ : Tech */}
+                      <td className="hidden px-2 py-3 lg:table-cell">
                         <div className="flex flex-wrap gap-0.5">
                           {l.technologies.slice(0, 2).map((t) => (
                             <span key={t} className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium">
@@ -361,6 +374,15 @@ export default function LeadsPage() {
                             </span>
                           )}
                         </div>
+                      </td>
+                      {/* xl+ : Location */}
+                      <td className="hidden px-2 py-3 xl:table-cell">
+                        {l.country ? (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{[l.city, l.country].filter(Boolean).join(', ')}</span>
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       <td className="px-2 py-3">
                         {l.qualityScore != null ? (
