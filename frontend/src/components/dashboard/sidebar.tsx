@@ -29,6 +29,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/jobs',         label: 'Jobs',          icon: ListTodo,    hot: false },
       { href: '/leads',        label: 'Leads',         icon: Users,       hot: false },
+      { href: '/search',       label: 'Graph Search',  icon: Search,      hot: true  },
       { href: '/lists',        label: 'Lead Lists',    icon: FolderHeart, hot: true  },
       { href: '/companies',    label: 'Companies',     icon: Building2,   hot: true  },
       { href: '/verification', label: 'Verification',  icon: BadgeCheck,  hot: false },

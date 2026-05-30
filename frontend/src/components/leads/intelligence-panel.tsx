@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   X, Brain, Building2, TrendingUp, Mail, Globe, Github, Twitter, Linkedin,
   Sparkles, AlertTriangle, Loader2, ExternalLink, Activity, Award, Target, Flag,
+  ThumbsUp, ThumbsDown, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApi, ApiError } from '@/lib/client-api';
@@ -215,6 +216,11 @@ export function IntelligencePanel({ leadId, onClose }: IntelligencePanelProps) {
                     <span>This may be a duplicate of an existing lead in your workspace.</span>
                   </div>
                 )}
+
+                {/* Feedback bar — teaches the future ML model. Captures the
+                    user's reaction to this score paired with the feature
+                    vector the scorer saw. */}
+                <FeedbackBar leadId={leadId!} />
               </section>
 
               {/* Firmographics */}
@@ -379,5 +385,105 @@ function SocialLink({ href, icon: Icon, label }: { href: string; icon: any; labe
       <span>{label}</span>
       <ExternalLink className="h-2.5 w-2.5 opacity-60" />
     </a>
+  );
+}
+
+// ─── Score-feedback bar ────────────────────────────────────────────────────
+//
+// Captures user labels paired with the feature vector the scorer saw, so the
+// future XGBoost retraining has clean ground-truth data. Quick paths (thumbs)
+// land immediately; the "Wrong because…" path opens a quick category picker
+// so users can give richer feedback in one tap.
+
+type FeedbackKind =
+  | 'HELPFUL' | 'NOT_HELPFUL'
+  | 'WRONG_INDUSTRY' | 'WRONG_ROLE'
+  | 'TOO_SMALL' | 'TOO_BIG'
+  | 'ALREADY_CUSTOMER' | 'BAD_FIT'
+  | 'REPLIED_POSITIVELY' | 'REPLIED_NEGATIVELY' | 'IGNORED';
+
+const DETAILED_REASONS: Array<{ kind: FeedbackKind; label: string }> = [
+  { kind: 'WRONG_INDUSTRY',  label: 'Wrong industry' },
+  { kind: 'WRONG_ROLE',      label: 'Wrong role' },
+  { kind: 'TOO_SMALL',       label: 'Company too small' },
+  { kind: 'TOO_BIG',         label: 'Company too big' },
+  { kind: 'ALREADY_CUSTOMER',label: 'Already a customer' },
+  { kind: 'BAD_FIT',         label: 'Bad fit overall' },
+];
+
+function FeedbackBar({ leadId }: { leadId: string }) {
+  // Local-only "I voted" memory — no extra round-trip just to show the check.
+  // The backend stores the full history; this is just optimistic UI.
+  const [sent, setSent] = useState<FeedbackKind | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
+  const api = useApi();
+
+  async function submit(kind: FeedbackKind) {
+    try {
+      await api.post('/intelligence/feedback', { leadId, kind });
+      setSent(kind);
+      setShowWhy(false);
+    } catch {
+      // The shared API client already toasts on 429; for everything else we
+      // stay quiet — failed feedback isn't worth interrupting the user.
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-dashed bg-muted/30 p-3">
+      {sent ? (
+        <div className="flex items-center justify-center gap-2 text-xs font-medium text-emerald-700">
+          <Check className="h-4 w-4" />
+          Thanks — your label is in the training set
+        </div>
+      ) : showWhy ? (
+        <div>
+          <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            What's off about this lead?
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {DETAILED_REASONS.map((r) => (
+              <button
+                key={r.kind}
+                onClick={() => submit(r.kind)}
+                className="rounded-full border bg-card px-2 py-0.5 text-[11px] hover:border-primary/40 hover:bg-accent"
+              >
+                {r.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowWhy(false)}
+              className="rounded-full border border-dashed px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-medium text-muted-foreground">
+            How accurate is this score?
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => submit('HELPFUL')}
+              className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs hover:border-emerald-500/40 hover:bg-emerald-500/5 hover:text-emerald-700"
+              title="Spot on"
+            >
+              <ThumbsUp className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Spot on</span>
+            </button>
+            <button
+              onClick={() => setShowWhy(true)}
+              className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs hover:border-rose-500/40 hover:bg-rose-500/5 hover:text-rose-700"
+              title="Wrong, here's why…"
+            >
+              <ThumbsDown className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Off</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
