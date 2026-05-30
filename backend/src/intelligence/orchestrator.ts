@@ -22,8 +22,9 @@ import { prisma } from '../db/prisma.js';
 import { logger } from '../utils/logger.js';
 import { enrichCompany, type CompanyFirmographics } from './enrichment/company.js';
 import { detectIntentSignals, intentScore, type IntentSignal } from './intent/signals.js';
-import { scoreLead } from './scoring/ai-scorer.js';
 import { resolveLead } from './matching/resolver.js';
+import { upsertCompanyNode, linkLeadToCompany } from './graph/builder.js';
+import { ensembleScore } from './scoring/ensemble.js';
 
 export interface IntelligenceResult {
   leadId: string;
@@ -54,11 +55,36 @@ export async function runIntelligence(leadId: string, opts?: { icpDescription?: 
   // Don't flag the lead as a duplicate of itself
   const duplicateOfLeadId = dedup?.match && dedup.match.id !== lead.id ? dedup.match.id : undefined;
 
-  // The LLM scorer wants the full feature bag — pass everything we collected.
-  const scoreResult = await scoreLead({
+  // Build/upsert the knowledge-graph Company node from the firmographics +
+  // intent signals. Captures the graph relationships so future "find me
+  // CFOs at companies that use Stripe AND raised in the last 90 days"
+  // queries work without re-fetching.
+  let graphCompany: Awaited<ReturnType<typeof prisma.company.findUnique>> | null = null;
+  if (firmographics) {
+    try {
+      const upsert = await upsertCompanyNode(firmographics, intentSignals);
+      await linkLeadToCompany(lead.id, upsert.companyId);
+      graphCompany = await prisma.company.findUnique({
+        where: { id: upsert.companyId },
+        include: {
+          fundingEvents: { orderBy: { announcedOn: 'desc' }, take: 5 },
+          executiveMoves: { orderBy: { announcedOn: 'desc' }, take: 5 },
+          technologies: true,
+        },
+      });
+    } catch (err) {
+      logger.warn({ leadId, err: (err as Error).message }, 'graph upsert failed');
+    }
+  }
+
+  // Ensemble scoring — combines heuristic (fast, deterministic) + LLM
+  // (narrative, ICP-aware). Future swap: replace the heuristic with an
+  // ONNX-loaded XGBoost trained on LeadScoreFeedback labels.
+  const verification = await prisma.emailVerification.findUnique({ where: { leadId: lead.id } });
+  const scoreResult = await ensembleScore({
     lead,
-    firmographics,
-    intentSignals,
+    company: graphCompany as any,
+    verification,
     icpDescription: opts?.icpDescription,
   });
 

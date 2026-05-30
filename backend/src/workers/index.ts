@@ -5,6 +5,7 @@ import { exportWorker } from './export.worker.js';
 import { webhookWorker } from './webhook.worker.js';
 import { campaignWorker } from './campaign.worker.js';
 import { imapPollWorker, bootstrapImapPolls } from './imap-poll.worker.js';
+import { crawlFrontierWorker } from '../intelligence/crawling/worker.js';
 import { logger } from '../utils/logger.js';
 
 const workers = [
@@ -15,6 +16,7 @@ const workers = [
   { name: 'webhook', w: webhookWorker },
   { name: 'campaign', w: campaignWorker },
   { name: 'imap-poll', w: imapPollWorker },
+  { name: 'crawl-frontier', w: crawlFrontierWorker },
 ];
 
 // Wire lifecycle logging on each worker. We also log `ready` and `error` so

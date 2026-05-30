@@ -23,6 +23,10 @@ import { detectIntentSignals, intentScore } from '../../intelligence/intent/sign
 import { runIntelligence } from '../../intelligence/orchestrator.js';
 import { resolveLead } from '../../intelligence/matching/resolver.js';
 import { generateRankedEmails } from '../../intelligence/email-discovery/patterns.js';
+import { extractEntities } from '../../intelligence/ner/extractor.js';
+import { enqueue as enqueueCrawl, stats as crawlStats } from '../../intelligence/crawling/frontier.js';
+import { queryLeads, graphStats } from '../../intelligence/graph/query.js';
+import { recordFeedback, feedbackStats } from '../../intelligence/scoring/feedback.js';
 
 const r = Router();
 
@@ -99,6 +103,98 @@ r.post('/predict-emails', authenticate, async (req, res, next) => {
       limit,
     );
     res.json({ predictions: ranked });
+  } catch (e) { next(e); }
+});
+
+// ── NER — extract structured entities from arbitrary text ────────────────
+r.post('/ner', authenticate, async (req, res, next) => {
+  try {
+    const { text } = z.object({ text: z.string().min(20).max(50_000) }).parse(req.body);
+    const entities = await extractEntities(text);
+    res.json({ entities });
+  } catch (e) { next(e); }
+});
+
+// ── Crawler frontier — enqueue URLs + view stats ────────────────────────
+r.post('/crawl/enqueue', authenticate, async (req, res, next) => {
+  try {
+    const { urls, jobId, priority } = z.object({
+      urls: z.array(z.string().url()).min(1).max(1000),
+      jobId: z.string().optional(),
+      priority: z.number().int().min(1).max(10).optional(),
+    }).parse(req.body);
+    const added = await enqueueCrawl(urls.map((u) => ({ url: u, jobId, priority })));
+    res.json({ added, requested: urls.length });
+  } catch (e) { next(e); }
+});
+
+r.get('/crawl/stats', authenticate, async (_req, res, next) => {
+  try {
+    res.json(await crawlStats());
+  } catch (e) { next(e); }
+});
+
+// ── Knowledge graph — typed lead search ─────────────────────────────────
+r.post('/graph/search', authenticate, async (req, res, next) => {
+  try {
+    const body = z.object({
+      jobSeniority: z.array(z.string()).optional(),
+      jobDepartment: z.array(z.string()).optional(),
+      verificationStatus: z.array(z.enum(['VALID', 'INVALID', 'RISKY', 'CATCH_ALL', 'UNKNOWN'])).optional(),
+      minQualityScore: z.number().int().min(0).max(100).optional(),
+      industrySlug: z.array(z.string()).optional(),
+      usesTech: z.array(z.string()).optional(),
+      usesAllTech: z.array(z.string()).optional(),
+      excludeTech: z.array(z.string()).optional(),
+      employeeMin: z.number().int().min(0).optional(),
+      employeeMax: z.number().int().min(0).optional(),
+      hqCountry: z.array(z.string()).optional(),
+      fundedWithinDays: z.number().int().min(1).max(3650).optional(),
+      execChangeWithinDays: z.number().int().min(1).max(3650).optional(),
+      foundedAfter: z.number().int().min(1800).max(2100).optional(),
+      page: z.number().int().min(1).optional(),
+      pageSize: z.number().int().min(1).max(200).optional(),
+      sortBy: z.enum(['qualityScore', 'createdAt', 'companyEmployees', 'lastFunding']).optional(),
+      sortOrder: z.enum(['asc', 'desc']).optional(),
+    }).parse(req.body);
+    const result = await queryLeads({ teamId: req.auth!.teamId, ...body });
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
+r.get('/graph/stats', authenticate, async (req, res, next) => {
+  try {
+    res.json(await graphStats(req.auth!.teamId));
+  } catch (e) { next(e); }
+});
+
+// ── Score feedback — user labels for ML retraining ──────────────────────
+r.post('/feedback', authenticate, async (req, res, next) => {
+  try {
+    const body = z.object({
+      leadId: z.string(),
+      kind: z.enum([
+        'HELPFUL', 'NOT_HELPFUL',
+        'WRONG_INDUSTRY', 'WRONG_ROLE', 'TOO_SMALL', 'TOO_BIG',
+        'ALREADY_CUSTOMER', 'BAD_FIT',
+        'REPLIED_POSITIVELY', 'REPLIED_NEGATIVELY', 'IGNORED',
+      ]),
+      notes: z.string().max(4000).optional(),
+    }).parse(req.body);
+    const created = await recordFeedback({
+      teamId: req.auth!.teamId,
+      leadId: body.leadId,
+      userId: req.auth!.userId,
+      kind: body.kind,
+      notes: body.notes,
+    });
+    res.json(created);
+  } catch (e) { next(e); }
+});
+
+r.get('/feedback/stats', authenticate, async (req, res, next) => {
+  try {
+    res.json(await feedbackStats(req.auth!.teamId));
   } catch (e) { next(e); }
 });
 

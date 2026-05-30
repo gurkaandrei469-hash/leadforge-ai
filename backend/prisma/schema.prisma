@@ -88,6 +88,7 @@ model Team {
   leadLists       LeadList[]
   campaigns       Campaign[]
   sendingAccounts SendingAccount[]
+  scoreFeedback   LeadScoreFeedback[]
 
   @@index([slug])
   @@index([stripeCustomerId])
@@ -263,13 +264,16 @@ model Lead {
   jobSeniority    String?
   jobDepartment   String?
 
-  // Company
+  // Company (denormalized strings + optional graph link)
   companyName     String?
   companyDomain   String?
   companyWebsite  String?
   companySize     String?
   companyIndustry String?
   companyRevenue  String?
+  /// Optional FK into the deduplicated knowledge-graph Company node.
+  companyId       String?
+  graphCompany    Company?        @relation("LeadCompany", fields: [companyId], references: [id])
 
   // Location
   country         String?
@@ -852,4 +856,239 @@ model RateLimit {
 
   @@index([key])
   @@index([resetAt])
+}
+
+// ─────────────────────────── KNOWLEDGE GRAPH ────────────────────────────────
+//
+// Postgres-backed graph of business entities. Companies are the central node;
+// they connect to Industries (taxonomy), Technologies (usage), FundingEvents
+// (history), and ExecutiveMoves (people history). Leads.companyId points
+// into this graph, so a workspace's leads automatically resolve to deduplicated
+// canonical company records.
+//
+// Why Postgres instead of Neo4j: the graph is shallow (3-4 hops max) and the
+// query patterns are dominated by filter + aggregate, which Postgres handles
+// with indexed FK joins as fast as Neo4j at this scale. Once we have 10M+
+// nodes we'd reconsider.
+
+model Company {
+  id              String       @id @default(cuid())
+  domain          String       @unique
+  name            String?
+  description     String?      @db.Text
+  industryId      String?
+  industry        Industry?    @relation(fields: [industryId], references: [id])
+  employeeCount   Int?
+  employeeRange   String?      // "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5000+"
+  foundedYear     Int?
+  hqCity          String?
+  hqCountry       String?
+  hqRegion        String?
+  linkedinUrl     String?
+  twitterUrl      String?
+  githubUrl       String?
+  crunchbaseUrl   String?
+  totalFundingUsd BigInt?
+  lastFundingRound String?
+  isPublic        Boolean      @default(false)
+  ticker          String?      // public companies
+  hasSpf          Boolean      @default(false)
+  hasDmarc        Boolean      @default(false)
+  enrichedAt      DateTime?
+  enrichmentSources String[]
+  technologies    CompanyTechnology[]
+  fundingEvents   FundingEvent[]
+  executiveMoves  ExecutiveMove[]
+  leads           Lead[]       @relation("LeadCompany")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([name])
+  @@index([industryId])
+  @@index([hqCountry])
+  @@index([employeeCount])
+}
+
+model Industry {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  parentId    String?
+  parent      Industry? @relation("IndustryHierarchy", fields: [parentId], references: [id])
+  children    Industry[] @relation("IndustryHierarchy")
+  companies   Company[]
+  createdAt   DateTime  @default(now())
+
+  @@index([parentId])
+}
+
+model Technology {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  category    String?   // "analytics", "infra", "frontend", "payments", etc.
+  vendor      String?
+  companies   CompanyTechnology[]
+  createdAt   DateTime  @default(now())
+
+  @@index([category])
+}
+
+model CompanyTechnology {
+  id           String     @id @default(cuid())
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  technologyId String
+  technology   Technology @relation(fields: [technologyId], references: [id], onDelete: Cascade)
+  /// Confidence 0..1 — how sure are we this company uses this tech
+  confidence   Float      @default(0.8)
+  detectedAt   DateTime   @default(now())
+
+  @@unique([companyId, technologyId])
+  @@index([technologyId])
+}
+
+enum FundingRoundType {
+  PRE_SEED
+  SEED
+  SERIES_A
+  SERIES_B
+  SERIES_C
+  SERIES_D
+  SERIES_E_PLUS
+  GROWTH
+  DEBT
+  IPO
+  ACQUISITION
+  SECONDARY
+}
+
+model FundingEvent {
+  id           String           @id @default(cuid())
+  companyId    String
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  round        FundingRoundType
+  amountUsd    BigInt?
+  valuationUsd BigInt?
+  announcedOn  DateTime
+  investors    String[]
+  sourceUrl    String?
+  createdAt    DateTime         @default(now())
+
+  @@index([companyId, announcedOn])
+  @@index([announcedOn])
+}
+
+model ExecutiveMove {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  personName   String
+  newTitle     String   // "CEO", "CTO", "VP of Sales", etc.
+  changeType   String   // "APPOINTED" | "DEPARTED" | "PROMOTED"
+  announcedOn  DateTime
+  sourceUrl    String?
+  createdAt    DateTime @default(now())
+
+  @@index([companyId, announcedOn])
+}
+
+// ─────────────────────────── ML SCORER FEEDBACK ─────────────────────────────
+//
+// User-supplied labels on the AI-scored leads. Used as training data for the
+// future XGBoost / LightGBM model. Captured as binary helpful/not-helpful
+// plus optional free-text and a feature snapshot so we can replay the input
+// the model saw at the time of scoring.
+
+enum FeedbackKind {
+  HELPFUL
+  NOT_HELPFUL
+  WRONG_INDUSTRY
+  WRONG_ROLE
+  TOO_SMALL
+  TOO_BIG
+  ALREADY_CUSTOMER
+  BAD_FIT
+  REPLIED_POSITIVELY
+  REPLIED_NEGATIVELY
+  IGNORED
+}
+
+model LeadScoreFeedback {
+  id              String       @id @default(cuid())
+  teamId          String
+  team            Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  leadId          String
+  userId          String?
+  /// The AI score at the time of feedback — frozen for training fidelity.
+  scoreAtFeedback Int?
+  tierAtFeedback  String?
+  kind            FeedbackKind
+  notes           String?      @db.Text
+  /// JSON snapshot of the full feature vector — replayable for model retraining.
+  features        Json?
+  createdAt       DateTime     @default(now())
+
+  @@index([teamId, leadId])
+  @@index([kind])
+  @@index([createdAt])
+}
+
+// ─────────────────────────── CRAWL FRONTIER ─────────────────────────────────
+//
+// Distributed crawler bookkeeping. We track each URL's status, last fetch,
+// next eligible-time (politeness), retry count, and which job owns it. The
+// Redis-backed BullMQ queue handles the actual scheduling; this Postgres
+// table is the durable source of truth and audit trail.
+
+enum CrawlState {
+  PENDING
+  IN_FLIGHT
+  SUCCEEDED
+  FAILED
+  ROBOTS_DENIED
+  SKIPPED
+}
+
+model CrawlEntry {
+  id            String     @id @default(cuid())
+  url           String
+  /// Domain used for politeness grouping.
+  host          String
+  jobId         String?
+  /// 1 (urgent) – 10 (background).
+  priority      Int        @default(5)
+  state         CrawlState @default(PENDING)
+  attempt       Int        @default(0)
+  /// Earliest time we may fetch this URL — set by per-host politeness rules.
+  notBefore     DateTime   @default(now())
+  fetchedAt     DateTime?
+  httpStatus    Int?
+  errorMessage  String?
+  /// Hash of the response body — for cheap dedup against prior fetches.
+  contentHash   String?
+  contentBytes  Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([url, jobId])
+  @@index([host, notBefore])
+  @@index([state, priority])
+  @@index([jobId, state])
+}
+
+// Per-host politeness state. Updated by the crawl worker after each fetch
+// so that subsequent fetches for the same host wait the appropriate delay.
+model CrawlHost {
+  host           String   @id
+  /// Seconds between fetches — derived from robots.txt Crawl-delay or default.
+  delaySeconds   Int      @default(2)
+  /// Concurrent fetches allowed against this host (default 1 per RFC 7231 hints).
+  concurrencyMax Int      @default(1)
+  lastFetchedAt  DateTime?
+  robotsTxt      String?  @db.Text
+  robotsFetchedAt DateTime?
+  /// Last 32-bit XX-RateLimit-Remaining we saw, for adaptive backoff.
+  lastRateRemain Int?
+  updatedAt      DateTime @updatedAt
 }
