@@ -9,6 +9,7 @@ import {
 import { ImportLeadsModal } from '@/components/leads/import-modal';
 import { ManualAddLeadModal } from '@/components/leads/manual-add-modal';
 import { toast } from 'sonner';
+import { useAuth } from '@clerk/nextjs';
 import { useApi, ApiError } from '@/lib/client-api';
 import { Avatar } from '@/components/ui/avatar';
 
@@ -49,6 +50,7 @@ const FILTER_CHIPS = [
 
 export default function LeadsPage() {
   const api = useApi();
+  const { getToken } = useAuth();
   const searchParams = useSearchParams();
   const jobId = searchParams.get('jobId');
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -87,8 +89,42 @@ export default function LeadsPage() {
   async function exportFormat(format: 'CSV' | 'XLSX' | 'JSON') {
     setExporting(true);
     try {
-      await api.post('/exports', { format, ...(jobId && { jobId }) });
-      toast.success(`${format} export queued — find it in Settings → Billing → Exports`);
+      if (format === 'CSV') {
+        // Synchronous streaming CSV — triggers a normal browser download.
+        // Carries the same filters the table is showing so the file matches
+        // what the user is looking at. If the user has rows selected, only
+        // those rows are exported.
+        const params = new URLSearchParams();
+        if (selected.size > 0) params.set('leadIds', Array.from(selected).join(','));
+        else {
+          if (jobId) params.set('jobId', jobId);
+          if (search) params.set('search', search);
+          if (filter !== 'all') params.set('verificationStatus', filter.toUpperCase());
+        }
+        // Use a same-origin download — the Next rewrite proxies it to Railway,
+        // and we still get the authenticated session because Clerk is on the
+        // same host. For browsers that need an Authorization header on the
+        // request, we fetch as blob + trigger a download programmatically.
+        const token = await getToken();
+        const res = await fetch(`/api/backend/leads/export.csv?${params.toString()}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error(`Export failed (${res.status})`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `leadforge-export-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast.success(`Exported ${selected.size > 0 ? `${selected.size} selected` : 'all'} leads`);
+      } else {
+        // XLSX / JSON still go through the async queue.
+        await api.post('/exports', { format, ...(jobId && { jobId }) });
+        toast.success(`${format} export queued — find it in Settings → Billing → Exports`);
+      }
     } catch (e: any) { toast.error(e.message); }
     finally { setExporting(false); }
   }

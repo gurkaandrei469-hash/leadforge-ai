@@ -24,6 +24,90 @@ const LeadQuery = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+/**
+ * Streaming CSV export — synchronous, fast, no worker hop needed.
+ * Matches the same filters as GET / so the user always gets exactly what
+ * they see in the UI. For very large workspaces (>50k leads) Chrome may
+ * stream this for a few seconds — that's fine.
+ *
+ * Query params:
+ *   • search, status, jobId, verificationStatus — same as list endpoint
+ *   • leadIds — comma-separated list to export ONLY those rows (used by
+ *               the bulk-select toolbar)
+ */
+r.get('/export.csv', authenticate, async (req, res, next) => {
+  try {
+    const teamId = req.auth!.teamId;
+    const q = z.object({
+      search: z.string().optional(),
+      status: z.string().optional(),
+      jobId: z.string().optional(),
+      verificationStatus: z.string().optional(),
+      leadIds: z.string().optional(), // comma-separated
+    }).parse(req.query);
+
+    const where: any = { teamId };
+    if (q.leadIds) where.id = { in: q.leadIds.split(',').map((s) => s.trim()).filter(Boolean) };
+    if (q.jobId) where.jobId = q.jobId;
+    if (q.status) where.status = q.status as any;
+    if (q.verificationStatus) where.verificationStatus = q.verificationStatus as any;
+    if (q.search) {
+      where.OR = [
+        { email: { contains: q.search, mode: 'insensitive' } },
+        { fullName: { contains: q.search, mode: 'insensitive' } },
+        { companyName: { contains: q.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const total = await prisma.lead.count({ where });
+    const ts = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="leadforge-export-${ts}.csv"`);
+    res.setHeader('X-Total-Rows', String(total));
+
+    // Header row. Order chosen for usefulness in cold-outreach tooling
+    // (HubSpot, Apollo, Outreach, etc. all accept this layout).
+    const headers = [
+      'email', 'full_name', 'first_name', 'last_name', 'job_title',
+      'company_name', 'company_domain', 'company_website',
+      'country', 'city', 'linkedin_url', 'twitter_url',
+      'quality_score', 'verification_status', 'is_role_account', 'is_disposable',
+      'technologies', 'source_url', 'source_type', 'created_at',
+    ];
+    res.write(headers.join(',') + '\n');
+
+    // Stream in 500-row chunks to keep memory bounded even for very large exports.
+    const BATCH = 500;
+    for (let skip = 0; skip < total; skip += BATCH) {
+      const rows = await prisma.lead.findMany({
+        where, skip, take: BATCH,
+        orderBy: { createdAt: 'desc' },
+        include: { verification: true },
+      });
+      for (const l of rows) {
+        const cells = [
+          l.email, l.fullName, l.firstName, l.lastName, l.jobTitle,
+          l.companyName, l.companyDomain, l.companyWebsite,
+          l.country, l.city, l.linkedinUrl, l.twitterUrl,
+          l.qualityScore, l.verificationStatus, l.verification?.isRoleAccount, l.verification?.isDisposable,
+          (l.technologies ?? []).join('; '),
+          l.sourceUrl, l.sourceType, l.createdAt.toISOString(),
+        ].map(csvCell);
+        res.write(cells.join(',') + '\n');
+      }
+    }
+    res.end();
+  } catch (e) { next(e); }
+});
+
+/** RFC-4180 cell escape — wraps in quotes when the value contains comma, quote, or newline. */
+function csvCell(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 r.get('/', authenticate, async (req, res, next) => {
   try {
     const q = LeadQuery.parse(req.query);
