@@ -1,0 +1,93 @@
+{
+  // ─── Editor behavior ──────────────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    // Auto-fix lint errors + organize imports on every save. Keeps PR diffs
+    // focused on real changes instead of import shuffling.
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "editor.tabSize": 2,
+  "editor.rulers": [100],
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": "active",
+
+  // ─── TypeScript ───────────────────────────────────────────────────────────
+  // Tell VS Code to use the workspace's own TS version (matters because the
+  // backend pins TS 5.x; the bundled one in VS Code can lag).
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "typescript.preferences.useAliasesForRenames": true,
+  // Show inline param hints — helpful when reading deep nested API calls
+  "typescript.inlayHints.parameterNames.enabled": "literals",
+
+  // ─── Tailwind CSS ─────────────────────────────────────────────────────────
+  "tailwindCSS.experimental.classRegex": [
+    // Recognize tailwind classes inside `cn(...)`, `cx(...)`, and `class:` props
+    ["\\bcn\\(([^)]*)\\)", "[\"'`]([^\"'`]*)[\"'`]"],
+    ["\\bcx\\(([^)]*)\\)", "[\"'`]([^\"'`]*)[\"'`]"]
+  ],
+  "tailwindCSS.includeLanguages": {
+    "typescript": "typescript",
+    "typescriptreact": "typescriptreact"
+  },
+
+  // ─── Files & search ───────────────────────────────────────────────────────
+  // Hide noisy directories from the file tree so navigation stays snappy.
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true,
+    "**/.turbo": true,
+    "**/tsconfig.tsbuildinfo": true
+  },
+  // …but DO let search index everything except heavy build output.
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true,
+    "**/package-lock.json": true,
+    "**/coverage": true
+  },
+  "files.associations": {
+    "*.css": "tailwindcss",
+    ".env.example": "dotenv",
+    ".env.local": "dotenv"
+  },
+
+  // ─── Prisma ───────────────────────────────────────────────────────────────
+  "[prisma]": {
+    "editor.defaultFormatter": "Prisma.prisma",
+    "editor.formatOnSave": true
+  },
+
+  // ─── Language-specific formatter pins ─────────────────────────────────────
+  "[typescript]":       { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]":  { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascript]":       { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascriptreact]":  { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]":             { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[jsonc]":            { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[markdown]":         { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+
+  // ─── ESLint — run on both workspaces ──────────────────────────────────────
+  "eslint.workingDirectories": [
+    { "directory": "./backend",  "changeProcessCWD": true },
+    { "directory": "./frontend", "changeProcessCWD": true }
+  ],
+  "eslint.validate": ["javascript", "typescript", "typescriptreact"],
+
+  // ─── Terminal ─────────────────────────────────────────────────────────────
+  "terminal.integrated.scrollback": 10000,
+  "terminal.integrated.cwd": "${workspaceFolder}",
+
+  // ─── Git ──────────────────────────────────────────────────────────────────
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "git.pruneOnFetch": true
+}

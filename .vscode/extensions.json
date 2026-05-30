@@ -1,0 +1,28 @@
+{
+  // Extensions VS Code will recommend the moment anyone opens this repo.
+  // Anyone on the team gets the same baseline; nothing is force-installed.
+  "recommendations": [
+    // Core
+    "dbaeumer.vscode-eslint",                  // Lint TypeScript + JSX on save
+    "esbenp.prettier-vscode",                  // Code formatter
+    "editorconfig.editorconfig",               // Honor .editorconfig if present
+
+    // Stack-specific
+    "bradlc.vscode-tailwindcss",               // Tailwind class autocomplete + linting
+    "prisma.prisma",                           // Prisma schema language support
+    "ms-azuretools.vscode-docker",             // Dockerfile syntax + container inspect
+    "yoavbls.pretty-ts-errors",                // Human-readable TS error messages
+    "usernamehw.errorlens",                    // Inline lint/error display
+
+    // Git & PRs
+    "github.vscode-pull-request-github",       // Browse + review PRs in-editor
+    "eamodio.gitlens",                         // Blame, history, hover-on-commit
+
+    // Claude Code in VS Code
+    "anthropic.claude-code"                    // Claude Code as a sidebar
+  ],
+
+  // Extensions that have caused friction here — VS Code will warn if any of
+  // these are enabled. (None right now, kept as a slot for future use.)
+  "unwantedRecommendations": []
+}

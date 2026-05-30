@@ -1,0 +1,94 @@
+{
+  // VS Code task definitions. Run any of these via Cmd+Shift+P → "Run Task".
+  // Tasks are also surfaced as "Build Task" (Cmd+Shift+B) when marked as
+  // group: "build".
+  "version": "2.0.0",
+  "tasks": [
+    // ─── One-shot ────────────────────────────────────────────────────────────
+    {
+      "label": "Backend: type check",
+      "type": "shell",
+      "command": "npx tsc -p tsconfig.json --noEmit",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    },
+    {
+      "label": "Frontend: type check",
+      "type": "shell",
+      "command": "npx tsc --noEmit",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared" }
+    },
+    {
+      "label": "Type check (both)",
+      "dependsOn": ["Backend: type check", "Frontend: type check"],
+      "dependsOrder": "parallel",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+
+    // ─── Long-running dev servers ───────────────────────────────────────────
+    {
+      "label": "Dev: Backend API",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "Dev: Workers",
+      "type": "shell",
+      "command": "npx tsx watch src/workers/index.ts",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "Dev: Frontend",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "dev" }
+    },
+    {
+      "label": "Dev: full stack",
+      "dependsOn": ["Dev: Backend API", "Dev: Workers", "Dev: Frontend"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+
+    // ─── Prisma utilities ───────────────────────────────────────────────────
+    {
+      "label": "Prisma: studio",
+      "type": "shell",
+      "command": "npx prisma studio",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Prisma: migrate dev",
+      "type": "shell",
+      "command": "npx prisma migrate dev",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma: generate",
+      "type": "shell",
+      "command": "npx prisma generate",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": []
+    }
+  ]
+}
