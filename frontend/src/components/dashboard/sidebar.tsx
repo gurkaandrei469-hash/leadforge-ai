@@ -45,6 +45,7 @@ const NAV_SECTIONS = [
   {
     label: 'Settings',
     items: [
+      { href: '/settings/icp',          label: 'ICP',          icon: Sparkles,    hot: true },
       { href: '/settings/integrations', label: 'Integrations', icon: Plug,        hot: false },
       { href: '/settings/billing',      label: 'Billing',      icon: CreditCard,  hot: false },
       { href: '/settings/api-keys',     label: 'API Keys',     icon: Key,         hot: false },

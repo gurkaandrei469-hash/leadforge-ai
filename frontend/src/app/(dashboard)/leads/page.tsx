@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   Download, Filter, Search, Loader2, Mail, Linkedin, MapPin, Building2,
-  CheckCircle2, AlertTriangle, XCircle, HelpCircle, Sparkles, Star, Archive, Trash2, Plug, X, FolderHeart, Upload, UserPlus,
+  CheckCircle2, AlertTriangle, XCircle, HelpCircle, Sparkles, Star, Archive, Trash2, Plug, X, FolderHeart, Upload, UserPlus, Brain,
 } from 'lucide-react';
 import { ImportLeadsModal } from '@/components/leads/import-modal';
 import { ManualAddLeadModal } from '@/components/leads/manual-add-modal';
+import { IntelligencePanel } from '@/components/leads/intelligence-panel';
 import { toast } from 'sonner';
 import { useAuth } from '@clerk/nextjs';
 import { useApi, ApiError } from '@/lib/client-api';
@@ -65,6 +66,9 @@ export default function LeadsPage() {
   const [newListName, setNewListName] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [showManualAdd, setShowManualAdd] = useState(false);
+  // Intelligence panel — opens to the right when a row's Brain icon is clicked
+  const [intelligenceLeadId, setIntelligenceLeadId] = useState<string | null>(null);
+  const [runningBulkIntel, setRunningBulkIntel] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -291,8 +295,44 @@ export default function LeadsPage() {
             <button onClick={() => setSelected(new Set())} className="ml-2 hover:underline">clear</button>
           </span>
           <div className="ml-auto flex flex-wrap gap-1.5">
+            <BulkBtn
+              onClick={async () => {
+                if (runningBulkIntel) return;
+                setRunningBulkIntel(true);
+                const ids = Array.from(selected);
+                let done = 0;
+                const icp = typeof window !== 'undefined'
+                  ? (localStorage.getItem('leadforge:icp_description') ?? '')
+                  : '';
+                // 3 in flight at a time — the LLM scorer is the bottleneck and
+                // it tolerates 5-10 req/s on Groq. 3 keeps things polite.
+                const queue = [...ids];
+                const work = async () => {
+                  while (queue.length) {
+                    const id = queue.shift()!;
+                    try {
+                      await api.post('/intelligence/score', {
+                        leadId: id,
+                        ...(icp.trim() ? { icpDescription: icp.trim() } : {}),
+                      });
+                    } catch (e: any) {
+                      // Don't fail the batch — surface a single toast at the end
+                    }
+                    done++;
+                  }
+                };
+                toast.info(`Running intelligence on ${ids.length} leads…`);
+                await Promise.all([work(), work(), work()]);
+                toast.success(`Scored ${done} / ${ids.length} leads`);
+                setRunningBulkIntel(false);
+                load(); // refresh table to show new scores
+              }}
+              icon={runningBulkIntel ? Loader2 : Brain}
+              label={runningBulkIntel ? 'Scoring…' : 'Run intelligence'}
+              variant="primary"
+            />
             <BulkBtn onClick={() => bulkAction('verify')}     icon={Mail}        label="Verify"    />
-            <BulkBtn onClick={openListPicker}                 icon={FolderHeart} label="Add to list" variant="primary" />
+            <BulkBtn onClick={openListPicker}                 icon={FolderHeart} label="Add to list" />
             <BulkBtn onClick={() => bulkAction('favorite')}   icon={Star}        label="Favorite"  />
             <BulkBtn onClick={pushSelectedToHubspot}          icon={Plug}        label="HubSpot"   variant="orange" />
             <BulkBtn onClick={() => bulkAction('archive')}    icon={Archive}  label="Archive"   />
@@ -438,7 +478,16 @@ export default function LeadsPage() {
                         </span>
                       </td>
                       <td className="px-2 py-3">
-                        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                          {/* Intelligence — always visible, primary action */}
+                          <button
+                            onClick={() => setIntelligenceLeadId(l.id)}
+                            className="rounded p-1 text-primary hover:bg-primary/10"
+                            title="Run intelligence (enrichment + intent + AI scoring)"
+                            aria-label="Run intelligence"
+                          >
+                            <Brain className="h-3.5 w-3.5" />
+                          </button>
                           {l.linkedinUrl && (
                             <a
                               href={l.linkedinUrl}
@@ -472,6 +521,10 @@ export default function LeadsPage() {
         </>
       )}
 
+      <IntelligencePanel
+        leadId={intelligenceLeadId}
+        onClose={() => { setIntelligenceLeadId(null); load(); }}
+      />
       <ImportLeadsModal open={showImport} onClose={() => setShowImport(false)} onImported={load} />
       <ManualAddLeadModal open={showManualAdd} onClose={() => setShowManualAdd(false)} onAdded={load} />
 
