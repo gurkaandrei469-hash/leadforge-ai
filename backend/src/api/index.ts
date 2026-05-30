@@ -19,6 +19,7 @@ import sendingAccountsRoutes from './routes/sending-accounts.js';
 import campaignsRoutes from './routes/campaigns.js';
 import trackingRoutes from './routes/tracking.js';
 import leadImportRoutes from './routes/lead-import.js';
+import intelligenceRoutes from './routes/intelligence.js';
 
 export const apiRouter = Router();
 
@@ -42,3 +43,4 @@ apiRouter.use('/sending-accounts', sendingAccountsRoutes);
 apiRouter.use('/campaigns', campaignsRoutes);
 apiRouter.use('/track', trackingRoutes);
 apiRouter.use('/leads/import', leadImportRoutes);
+apiRouter.use('/intelligence', intelligenceRoutes);

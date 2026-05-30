@@ -176,24 +176,64 @@ function matchKeywordsOnPage(page: { title: string; text: string }, keywords: st
   return keywords.filter((kw) => hay.includes(kw.toLowerCase()));
 }
 
+/** Remove keys whose value is undefined so Prisma doesn't clobber non-null columns. */
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) (out as any)[k] = v;
+  }
+  return out;
+}
+
 async function persistLead(state: ExtractionState, c: LeadCandidate): Promise<void> {
   const { args } = state;
-  const lead = await prisma.lead.upsert({
-    where: {
-      teamId_emailNormalized: {
-        teamId: args.teamId,
-        emailNormalized: c.email?.toLowerCase() ?? `__none_${Date.now()}_${Math.random()}`,
-      },
-    },
-    create: {
-      teamId: args.teamId,
-      jobId: args.jobId,
-      ...c,
-      emailNormalized: c.email?.toLowerCase() ?? null,
-      status: 'NEW',
-    },
-    update: { jobId: args.jobId },
-  });
+
+  // Identity resolution — catch fuzzy duplicates (Jon Smith vs John Smith at
+  // the same company) BEFORE we upsert. The existing emailNormalized unique
+  // index handles exact-email dedup; this catches everything else.
+  let resolved: { id: string } | null = null;
+  try {
+    const { resolveLead } = await import('../intelligence/matching/resolver.js');
+    const r = await resolveLead(args.teamId, c);
+    if (r.match) resolved = { id: r.match.id };
+  } catch { /* resolver should never throw — but if it does, fall back to upsert */ }
+
+  const lead = resolved
+    ? await prisma.lead.update({
+        where: { id: resolved.id },
+        data: {
+          jobId: args.jobId,
+          // Fill in any fields we now have that we didn't before. Don't
+          // overwrite existing non-null values.
+          ...stripUndefined({
+            email: c.email ?? undefined,
+            fullName: c.fullName ?? undefined,
+            firstName: c.firstName ?? undefined,
+            lastName: c.lastName ?? undefined,
+            jobTitle: c.jobTitle ?? undefined,
+            companyName: c.companyName ?? undefined,
+            companyDomain: c.companyDomain ?? undefined,
+            linkedinUrl: c.linkedinUrl ?? undefined,
+            twitterUrl: c.twitterUrl ?? undefined,
+          }),
+        },
+      })
+    : await prisma.lead.upsert({
+        where: {
+          teamId_emailNormalized: {
+            teamId: args.teamId,
+            emailNormalized: c.email?.toLowerCase() ?? `__none_${Date.now()}_${Math.random()}`,
+          },
+        },
+        create: {
+          teamId: args.teamId,
+          jobId: args.jobId,
+          ...c,
+          emailNormalized: c.email?.toLowerCase() ?? null,
+          status: 'NEW',
+        },
+        update: { jobId: args.jobId },
+      });
 
   state.leadsFound++;
 
