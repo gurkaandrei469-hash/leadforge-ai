@@ -32,6 +32,15 @@ const ARRAY_FIELDS: Record<string, string> = {
   keyword: 'matchedKeywords',
 };
 
+// Virtual fields that need remapping in the in-memory evaluator
+// (condToWhere handles them with specialised Prisma logic; evalCondition
+//  just needs the underlying Lead column so exists/not_exists work correctly)
+const VIRTUAL_FIELD_MAP: Record<string, string> = {
+  has_email: 'email',
+  has_phone: 'email',   // no phone column; treat as email presence for in-memory pass
+  social_presence: 'linkedinUrl',
+};
+
 function condToWhere(c: Condition): Prisma.LeadWhereInput {
   // Specialized fields
   switch (c.field) {
@@ -127,7 +136,7 @@ export function matchInMemory(filter: Filter, lead: Record<string, any>): boolea
 }
 
 function evalCondition(c: Condition, lead: Record<string, any>): boolean {
-  const col = FIELD_MAP[c.field] ?? ARRAY_FIELDS[c.field] ?? c.field;
+  const col = FIELD_MAP[c.field] ?? ARRAY_FIELDS[c.field] ?? VIRTUAL_FIELD_MAP[c.field] ?? c.field;
   const v = lead[col];
   switch (c.operator) {
     // Array-valued lead fields (matchedKeywords, technologies) need element-wise
