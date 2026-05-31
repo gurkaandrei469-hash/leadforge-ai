@@ -2,6 +2,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import axios from 'axios';
 import type { SendingAccount } from '@prisma/client';
 import { logger } from '../utils/logger.js';
+import { lookupMx } from '../verification/mx.js';
 
 export interface SendResult {
   ok: boolean;
@@ -45,6 +46,8 @@ export async function sendOne(
       result = await sendViaSendGrid(account, to, subject, htmlBody, textBody, messageIdHeader);
     else if (account.provider === 'SES')
       result = await sendViaSes(account, to, subject, htmlBody, textBody, messageIdHeader);
+    else if (account.provider === 'TURBOMX')
+      result = await sendViaTurboMx(account, to, subject, htmlBody, textBody, messageIdHeader);
     else return { ok: false, error: `Unsupported provider: ${account.provider}` };
 
     return { ...result, messageIdHeader };
@@ -222,6 +225,86 @@ async function sendViaSes(
     }
     return { ok: false, error: err.message };
   }
+}
+
+// ─── TurboMX — direct-to-MX delivery on port 25 ─────────────────────────────
+//
+// Resolves MX records for the recipient domain, then connects directly to each
+// host in priority order on port 25 with no AUTH. This is how mail servers
+// actually deliver email to each other.
+//
+// Requirements for reliable delivery:
+//   • Port 25 outbound must be open on your server (blocked by most cloud VMs)
+//   • Your sending IP must have a PTR (rDNS) record matching heloHostname
+//   • SPF record on the fromEmail domain pointing to your sending IP
+//   • DKIM signing strongly recommended (configure dkimDomain / dkimKeySelector /
+//     dkimPrivateKeyEnc on the SendingAccount row)
+//   • DMARC policy on the fromEmail domain (optional but improves inbox rates)
+
+async function sendViaTurboMx(
+  account: SendingAccount,
+  to: string,
+  subject: string,
+  html: string,
+  text: string | undefined,
+  messageId: string,
+): Promise<SendResult> {
+  const recipientDomain = to.split('@')[1]?.toLowerCase();
+  if (!recipientDomain) return { ok: false, error: 'Invalid recipient address — no domain part' };
+
+  // Resolve MX records (cached 7 days in DomainCache table)
+  const { valid, records: mxHosts } = await lookupMx(recipientDomain);
+  // RFC 5321 §5.1: if no MX records exist, fall back to an A-record implicit MX
+  const hosts = valid && mxHosts.length > 0 ? mxHosts : [recipientDomain];
+
+  const heloName = account.heloHostname || account.fromEmail.split('@')[1] || 'localhost';
+
+  // Build DKIM options if the account has a key configured
+  const dkimOptions =
+    account.dkimPrivateKeyEnc && account.dkimKeySelector && account.dkimDomain
+      ? {
+          domainName: account.dkimDomain,
+          keySelector: account.dkimKeySelector,
+          privateKey: account.dkimPrivateKeyEnc,
+        }
+      : undefined;
+
+  const mailPayload: any = {
+    from: `"${account.fromName}" <${account.fromEmail}>`,
+    to,
+    subject,
+    html,
+    text: text ?? html.replace(/<[^>]*>/g, ''),
+    messageId,
+    ...(dkimOptions && { dkim: dkimOptions }),
+  };
+
+  let lastError = 'No MX hosts to try';
+
+  for (const mxHost of hosts) {
+    try {
+      // Create a fresh transport per MX host — port 25, no auth, no implicit TLS
+      const transport: Transporter = nodemailer.createTransport({
+        host: mxHost,
+        port: 25,
+        secure: false,      // plain SMTP; recipient server may upgrade via STARTTLS
+        name: heloName,     // EHLO hostname — should match PTR record of sending IP
+        connectionTimeout: 12_000,
+        greetingTimeout:   12_000,
+        socketTimeout:     30_000,
+        tls: { rejectUnauthorized: false }, // MX servers often have self-signed certs
+      });
+
+      const info = await transport.sendMail(mailPayload);
+      logger.debug({ mxHost, recipient: to }, 'TurboMX: delivered');
+      return { ok: true, providerMessageId: info.messageId };
+    } catch (err: any) {
+      lastError = err.message ?? String(err);
+      logger.warn({ mxHost, recipient: to, err: lastError }, 'TurboMX: MX host failed, trying next');
+    }
+  }
+
+  return { ok: false, error: `TurboMX: all MX hosts failed. Last: ${lastError.slice(0, 200)}` };
 }
 
 // Variable substitution: {{first_name}}, {{last_name}}, {{full_name}}, {{company}}, {{job_title}}, {{email}}

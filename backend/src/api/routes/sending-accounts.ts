@@ -66,7 +66,19 @@ const SesInput = z.object({
   dailyLimit: z.number().int().min(1).max(2000).default(200),
 }).merge(ImapBlock);
 
-const ConnectInput = z.discriminatedUnion('provider', [SmtpInput, SendgridInput, SesInput]);
+const TurboMxInput = z.object({
+  provider: z.literal('TURBOMX'),
+  name: z.string().min(1).max(120),
+  fromName: z.string().min(1).max(120),
+  fromEmail: z.string().email(),
+  heloHostname: z.string().min(1),
+  dkimDomain: z.string().optional(),
+  dkimKeySelector: z.string().optional(),
+  dkimPrivateKey: z.string().optional(),
+  dailyLimit: z.number().int().min(1).max(10000).default(200),
+}).merge(ImapBlock);
+
+const ConnectInput = z.discriminatedUnion('provider', [SmtpInput, SendgridInput, SesInput, TurboMxInput]);
 
 r.post('/', authenticate, requireRole('OWNER', 'ADMIN'), async (req, res, next) => {
   try {
@@ -92,6 +104,11 @@ r.post('/', authenticate, requireRole('OWNER', 'ADMIN'), async (req, res, next) 
       data.smtpUser = body.smtpUser;
       data.smtpPassEnc = body.smtpPass;
       data.smtpSecure = body.smtpSecure;
+    } else if (body.provider === 'TURBOMX') {
+      data.heloHostname = body.heloHostname;
+      data.dkimDomain = body.dkimDomain ?? body.fromEmail.split('@')[1] ?? null;
+      data.dkimKeySelector = body.dkimKeySelector ?? null;
+      data.dkimPrivateKeyEnc = body.dkimPrivateKey ?? null;
     } else {
       data.apiKeyEnc = body.apiKey;
     }
@@ -123,6 +140,31 @@ r.post('/:id/test', authenticate, async (req, res, next) => {
       where: { id: req.params.id, teamId: req.auth!.teamId },
     });
     if (!account) throw Errors.notFound('Sending account');
+
+    // TurboMX: verify port 25 is reachable by connecting to a known MX host
+    if (account.provider === 'TURBOMX') {
+      try {
+        const { promises: dns } = await import('node:dns');
+        const records = await dns.resolveMx('gmail.com');
+        const mxHost = records.sort((a, b) => a.priority - b.priority)[0]?.exchange;
+        if (!mxHost) return res.json({ ok: false, message: 'Could not resolve test MX (gmail.com).' });
+        const transport = nodemailer.createTransport({
+          host: mxHost,
+          port: 25,
+          secure: false,
+          name: account.heloHostname || account.fromEmail.split('@')[1] || 'localhost',
+          connectionTimeout: 10_000,
+          greetingTimeout: 10_000,
+          tls: { rejectUnauthorized: false },
+        });
+        await transport.verify();
+        const dkimNote = account.dkimPrivateKeyEnc ? ' DKIM key configured.' : ' No DKIM key — deliverability may be lower.';
+        return res.json({ ok: true, message: `Port 25 reachable (tested via ${mxHost}).${dkimNote}` });
+      } catch (e: any) {
+        return res.json({ ok: false, message: humanizeMailError(e.message) + ' — Port 25 is blocked by most cloud providers. You need a VPS or dedicated server with port 25 open.' });
+      }
+    }
+
     if (account.provider !== 'SMTP' && account.provider !== 'GMAIL_OAUTH' && account.provider !== 'MICROSOFT_OAUTH') {
       return res.json({ ok: !!account.apiKeyEnc, message: 'API key stored. Real send will validate.' });
     }
@@ -442,10 +484,11 @@ r.delete('/:id', authenticate, requireRole('OWNER', 'ADMIN'), async (req, res, n
 
 // Strip secrets before sending back to client
 function sanitize(a: any) {
-  const { smtpPassEnc, apiKeyEnc, imapPassEnc, oauthRefreshTokenEnc, ...rest } = a;
+  const { smtpPassEnc, apiKeyEnc, imapPassEnc, oauthRefreshTokenEnc, dkimPrivateKeyEnc, ...rest } = a;
   return {
     ...rest,
-    hasSecret: !!(smtpPassEnc || apiKeyEnc || oauthRefreshTokenEnc),
+    hasSecret: !!(smtpPassEnc || apiKeyEnc || oauthRefreshTokenEnc || dkimPrivateKeyEnc),
+    hasDkim: !!dkimPrivateKeyEnc,
     imapConfigured: !!(rest.imapHost && rest.imapUser && imapPassEnc),
   };
 }

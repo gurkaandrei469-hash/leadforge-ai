@@ -8,12 +8,16 @@ import { PROVIDER_PRESETS, detectProviderFromEmail, type ProviderPreset } from '
 
 interface SendingAccount {
   id: string;
-  provider: 'SMTP' | 'SENDGRID' | 'SES' | 'GMAIL_OAUTH' | 'MICROSOFT_OAUTH';
+  provider: 'SMTP' | 'SENDGRID' | 'SES' | 'GMAIL_OAUTH' | 'MICROSOFT_OAUTH' | 'TURBOMX';
   name: string;
   fromName: string;
   fromEmail: string;
   smtpHost?: string;
   smtpPort?: number;
+  heloHostname?: string | null;
+  dkimDomain?: string | null;
+  dkimKeySelector?: string | null;
+  hasDkim?: boolean;
   imapHost?: string | null;
   imapPort?: number | null;
   imapUser?: string | null;
@@ -34,6 +38,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   SES:             'from-amber-500/20 to-amber-500/0 text-amber-500',
   GMAIL_OAUTH:     'from-rose-500/20 to-rose-500/0 text-rose-500',
   MICROSOFT_OAUTH: 'from-blue-500/20 to-cyan-500/0 text-blue-500',
+  TURBOMX:         'from-violet-500/20 to-violet-500/0 text-violet-500',
 };
 
 export default function SendingAccountsPage() {
@@ -43,7 +48,7 @@ export default function SendingAccountsPage() {
   const [accounts, setAccounts] = useState<SendingAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
-  const [showAdd, setShowAdd] = useState<'SMTP' | 'SENDGRID' | 'SES' | null>(null);
+  const [showAdd, setShowAdd] = useState<'SMTP' | 'SENDGRID' | 'SES' | 'TURBOMX' | null>(null);
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [connectingMicrosoft, setConnectingMicrosoft] = useState(false);
   const [pickerProvider, setPickerProvider] = useState<string | null>(null); // SMTP-preset id
@@ -79,6 +84,13 @@ export default function SendingAccountsPage() {
   const [smtpSecure, setSmtpSecure] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [dailyLimit, setDailyLimit] = useState(50);
+  // TurboMX form state
+  const [heloHostname, setHeloHostname] = useState('');
+  const [dkimDomain, setDkimDomain] = useState('');
+  const [dkimKeySelector, setDkimKeySelector] = useState('mail');
+  const [dkimPrivateKey, setDkimPrivateKey] = useState('');
+  const [showDkim, setShowDkim] = useState(false);
+
   // IMAP form state
   const [imapEnabled, setImapEnabled] = useState(false);
   const [imapHost, setImapHost] = useState('');
@@ -144,6 +156,7 @@ export default function SendingAccountsPage() {
     setName(''); setFromName(''); setFromEmail('');
     setSmtpHost(''); setSmtpPort(587); setSmtpUser(''); setSmtpPass(''); setSmtpSecure(false);
     setApiKey(''); setDailyLimit(50);
+    setHeloHostname(''); setDkimDomain(''); setDkimKeySelector('mail'); setDkimPrivateKey(''); setShowDkim(false);
     setImapEnabled(false); setImapHost(''); setImapPort(993); setImapUser(''); setImapPass(''); setImapSecure(true);
   }
 
@@ -173,6 +186,14 @@ export default function SendingAccountsPage() {
       if (showAdd === 'SMTP') {
         if (!smtpHost || !smtpUser || !smtpPass) { setCreating(false); return toast.error('Fill out all SMTP fields'); }
         Object.assign(body, { smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure });
+      } else if (showAdd === 'TURBOMX') {
+        if (!heloHostname) { setCreating(false); return toast.error('HELO hostname is required'); }
+        Object.assign(body, {
+          heloHostname,
+          dkimDomain: dkimDomain || fromEmail.split('@')[1] || '',
+          ...(dkimKeySelector && { dkimKeySelector }),
+          ...(dkimPrivateKey && { dkimPrivateKey }),
+        });
       } else {
         if (!apiKey) { setCreating(false); return toast.error('API key required'); }
         body.apiKey = apiKey;
@@ -313,6 +334,15 @@ export default function SendingAccountsPage() {
                       {a.smtpHost && (
                         <div className="mt-0.5 text-xs text-muted-foreground font-mono">
                           {a.smtpHost}:{a.smtpPort}
+                        </div>
+                      )}
+                      {a.provider === 'TURBOMX' && a.heloHostname && (
+                        <div className="mt-0.5 text-xs text-muted-foreground font-mono flex items-center gap-1.5">
+                          <span>HELO: {a.heloHostname}</span>
+                          {a.hasDkim
+                            ? <span className="rounded-full bg-emerald-500/10 px-1.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-inset ring-emerald-500/30">DKIM on</span>
+                            : <span className="rounded-full bg-amber-500/10 px-1.5 text-[10px] font-semibold text-amber-600 ring-1 ring-inset ring-amber-500/30">No DKIM</span>
+                          }
                         </div>
                       )}
                       {a.imapEnabled && a.imapHost && (
@@ -484,6 +514,27 @@ export default function SendingAccountsPage() {
               ))}
             </div>
           </div>
+
+          {/* TurboMX */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Direct delivery</h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Send directly to recipient mail servers on port 25 — no relay, no limits. Requires a VPS with port 25 open and proper DNS setup.</p>
+            <div className="mt-2">
+              <button
+                onClick={() => { setPickerProvider(null); setShowAdd('TURBOMX'); }}
+                className="card-elevated group relative overflow-hidden flex items-center gap-3 p-3 text-left transition-transform hover:scale-[1.01] w-full"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-violet-500/0 opacity-60" />
+                <div className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br ${PROVIDER_COLORS['TURBOMX']}`}>
+                  <Send className="h-4 w-4" />
+                </div>
+                <div className="relative">
+                  <div className="text-sm font-semibold">TurboMX — Direct Port 25</div>
+                  <div className="text-[10px] text-muted-foreground">MX lookup → direct SMTP → no relay overhead. DKIM signing supported.</div>
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="card-elevated p-4 sm:p-6">
@@ -495,7 +546,7 @@ export default function SendingAccountsPage() {
               <ArrowLeft className="h-3 w-3" /> Back
             </button>
             <h3 className="text-sm font-semibold">
-              {activePreset ? activePreset.name : `Add ${showAdd} account`}
+              {activePreset ? activePreset.name : showAdd === 'TURBOMX' ? 'TurboMX — Direct Port 25' : `Add ${showAdd} account`}
             </h3>
             <span className="w-12" /> {/* spacer to balance back button */}
           </div>
@@ -572,7 +623,21 @@ export default function SendingAccountsPage() {
               </>
             )}
 
-            {showAdd !== 'SMTP' && (
+            {showAdd === 'TURBOMX' && (
+              <>
+                <Field label="HELO hostname" className="md:col-span-2">
+                  <input
+                    value={heloHostname}
+                    onChange={(e) => setHeloHostname(e.target.value)}
+                    placeholder="mail.acme.com"
+                    className={inputCls}
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">Must match the PTR (rDNS) record of your sending server's IP address.</p>
+                </Field>
+              </>
+            )}
+
+            {showAdd !== 'SMTP' && showAdd !== 'TURBOMX' && (
               <Field label={showAdd === 'SES' ? 'AWS credentials (accessKeyId:secret:region)' : 'API key'} className="md:col-span-2">
                 <input
                   type="password"
@@ -584,6 +649,71 @@ export default function SendingAccountsPage() {
               </Field>
             )}
           </div>
+
+          {/* TurboMX — requirements banner + DKIM */}
+          {showAdd === 'TURBOMX' && (
+            <div className="mt-5 space-y-3">
+              <div className="rounded-lg border border-amber-400/30 bg-amber-500/5 p-3 text-xs">
+                <div className="font-semibold text-amber-700">Port 25 requirements</div>
+                <ul className="mt-1.5 list-disc pl-4 space-y-0.5 text-muted-foreground">
+                  <li>Port 25 outbound open on your server (blocked by AWS EC2, GCP, Azure by default)</li>
+                  <li>PTR / rDNS record matching the HELO hostname above</li>
+                  <li>SPF TXT record on your sending domain pointing to your server IP</li>
+                  <li>DKIM signing configured below (strongly recommended)</li>
+                </ul>
+              </div>
+
+              <div className="rounded-lg border border-dashed bg-muted/20 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={showDkim}
+                    onChange={(e) => setShowDkim(e.target.checked)}
+                    className="mt-1 accent-primary"
+                  />
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <ShieldCheck className="h-3.5 w-3.5 text-violet-500" />
+                      DKIM signing
+                      <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-inset ring-emerald-500/30">Recommended</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Signs outbound mail with your private key. Add the public key as a DNS TXT record to pass DMARC.</p>
+                  </div>
+                </label>
+
+                {showDkim && (
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <Field label="DKIM domain">
+                      <input
+                        value={dkimDomain}
+                        onChange={(e) => setDkimDomain(e.target.value)}
+                        placeholder={fromEmail.split('@')[1] || 'acme.com'}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label="Key selector">
+                      <input
+                        value={dkimKeySelector}
+                        onChange={(e) => setDkimKeySelector(e.target.value)}
+                        placeholder="mail"
+                        className={inputCls}
+                      />
+                      <p className="mt-1 text-[10px] text-muted-foreground">DNS TXT: <span className="font-mono">{dkimKeySelector || 'mail'}._domainkey.{dkimDomain || fromEmail.split('@')[1] || 'acme.com'}</span></p>
+                    </Field>
+                    <Field label="Private key (PEM)" className="md:col-span-2">
+                      <textarea
+                        value={dkimPrivateKey}
+                        onChange={(e) => setDkimPrivateKey(e.target.value)}
+                        rows={5}
+                        placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----'}
+                        className={inputCls + ' font-mono text-[11px] resize-none'}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* IMAP — optional reply detection */}
           <div className="mt-5 rounded-lg border border-dashed bg-muted/20 p-4">

@@ -641,6 +641,7 @@ enum SendingProvider {
   SES
   GMAIL_OAUTH
   MICROSOFT_OAUTH
+  TURBOMX
 }
 
 model SendingAccount {
@@ -663,6 +664,12 @@ model SendingAccount {
   oauthAccessToken     String?    // short-lived; refreshed on demand
   oauthExpiresAt       DateTime?  // when oauthAccessToken expires
   oauthScopes          String?    // space-separated list, e.g. "https://mail.google.com/"
+  // TurboMX — direct-to-MX delivery on port 25
+  heloHostname    String?         // EHLO hostname (must match PTR record of sending IP)
+  dkimDomain      String?         // e.g. "acme.com" — the d= tag in DKIM
+  dkimKeySelector String?         // DNS TXT selector, e.g. "mail" or "s1"
+  dkimPrivateKeyEnc String?       // RSA/ED25519 private key PEM — TODO: real encryption
+
   // Optional IMAP for reply detection (typically same creds as SMTP for Gmail/Outlook)
   imapHost        String?
   imapPort        Int?
