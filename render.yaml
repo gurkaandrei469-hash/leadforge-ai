@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: leadforge-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: leadforge-neon
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: https://leadforge-ai-tawny.vercel.app
