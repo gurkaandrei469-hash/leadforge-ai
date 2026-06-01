@@ -23,15 +23,27 @@ export const bullConnection: RedisOptions = {
   retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
 };
 
-// Shared singleton for non-BullMQ Redis usage (pub/sub for live progress
-// streams, session locking, ad-hoc reads).
-export const redis = new IORedis(env.REDIS_URL, {
-  maxRetriesPerRequest: null,
+// Shared singleton for non-BullMQ usage (rate limiter, pub/sub).
+// maxRetriesPerRequest: 0  →  fail immediately if no connection instead of
+// hanging forever. The rate limiter middleware already has fail-open logic
+// so a fast Redis error is much better than a 30-second request timeout.
+const SHARED_OPTS: RedisOptions = {
+  maxRetriesPerRequest: 0,
   enableReadyCheck: false,
-});
+  connectTimeout: 5000,       // give up connecting after 5s
+  commandTimeout: 3000,       // individual commands time out in 3s
+  retryStrategy: (attempt) => attempt < 3 ? Math.min(attempt * 500, 2000) : null,
+  lazyConnect: true,          // don't block module load if Redis is unreachable
+};
 
-export const redisPub = new IORedis(env.REDIS_URL);
-export const redisSub = new IORedis(env.REDIS_URL);
+export const redis = new IORedis(env.REDIS_URL, SHARED_OPTS);
+export const redisPub = new IORedis(env.REDIS_URL, SHARED_OPTS);
+export const redisSub = new IORedis(env.REDIS_URL, SHARED_OPTS);
+
+// Suppress unhandled error events when Redis is unreachable so it doesn't crash Node
+redis.on('error', () => {});
+redisPub.on('error', () => {});
+redisSub.on('error', () => {});
 
 /** Convenience for callers that want a fresh ioredis client. */
 export function makeRedis(): IORedis {
