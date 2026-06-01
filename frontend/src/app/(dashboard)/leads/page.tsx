@@ -69,10 +69,14 @@ export default function LeadsPage() {
   // Intelligence panel — opens to the right when a row's Brain icon is clicked
   const [intelligenceLeadId, setIntelligenceLeadId] = useState<string | null>(null);
   const [runningBulkIntel, setRunningBulkIntel] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 100;
 
-  async function load() {
-    setLoading(true);
-    const qs = new URLSearchParams({ pageSize: '100' });
+  async function load(reset = true) {
+    if (reset) { setLoading(true); setPage(1); }
+    const currentPage = reset ? 1 : page;
+    const qs = new URLSearchParams({ pageSize: String(PAGE_SIZE), page: String(currentPage) });
     if (jobId) qs.set('jobId', jobId);
     if (search) qs.set('search', search);
     const chip = FILTER_CHIPS.find((c) => c.key === filter);
@@ -81,14 +85,36 @@ export default function LeadsPage() {
     }
     try {
       const res = await api.get<{ leads: Lead[]; total: number }>(`/leads?${qs}`);
-      setLeads(res.leads);
+      if (reset) setLeads(res.leads);
+      else setLeads(prev => [...prev, ...res.leads]);
       setTotal(res.total);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
-  useEffect(() => { load(); }, [jobId, search, filter]);
+  async function loadMore() {
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    setPage(nextPage);
+    const qs = new URLSearchParams({ pageSize: String(PAGE_SIZE), page: String(nextPage) });
+    if (jobId) qs.set('jobId', jobId);
+    if (search) qs.set('search', search);
+    const chip = FILTER_CHIPS.find((c) => c.key === filter);
+    if (chip) {
+      for (const [k, v] of Object.entries(chip.filter)) qs.set(k, String(v));
+    }
+    try {
+      const res = await api.get<{ leads: Lead[]; total: number }>(`/leads?${qs}`);
+      setLeads(prev => [...prev, ...res.leads]);
+      setTotal(res.total);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  useEffect(() => { load(true); }, [jobId, search, filter]);
 
   async function exportFormat(format: 'CSV' | 'XLSX' | 'JSON') {
     setExporting(true);
@@ -518,6 +544,28 @@ export default function LeadsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Load more */}
+          {leads.length < total && (
+            <div className="flex flex-col items-center gap-2 py-6">
+              <p className="text-xs text-muted-foreground">
+                Showing <span className="font-semibold tabular-nums">{leads.length.toLocaleString()}</span> of <span className="font-semibold tabular-nums">{total.toLocaleString()}</span> leads
+              </p>
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center gap-2 rounded-lg border bg-card px-5 py-2 text-sm font-semibold shadow-sm hover:bg-accent disabled:opacity-50 transition-colors"
+              >
+                {loadingMore
+                  ? <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Loading…</>
+                  : <>Load {Math.min(100, total - leads.length).toLocaleString()} more &darr;</>
+                }
+              </button>
+            </div>
+          )}
+          {leads.length >= total && total > 0 && (
+            <p className="py-3 text-center text-xs text-muted-foreground">All {total.toLocaleString()} leads loaded ✓</p>
+          )}
         </>
       )}
 
