@@ -231,7 +231,7 @@ export default function LeadsPage() {
   const allSelected = leads.length > 0 && selected.size === leads.length;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div className="space-y-3 overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -382,11 +382,20 @@ export default function LeadsPage() {
           {/* No forced min-width — instead progressively reveal columns as the
               viewport grows. Lead identity + score + status are always visible;
               everything else is opt-in at md/lg/xl. */}
-          <div className="card-elevated overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="card-elevated overflow-x-hidden">
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col className="w-10" />           {/* checkbox */}
+                <col className="w-[38%]" />         {/* Lead */}
+                <col className="hidden w-[22%] md:table-column" /> {/* Company */}
+                <col className="hidden w-[18%] xl:table-column" /> {/* Title */}
+                <col className="w-20" />            {/* Score */}
+                <col className="w-24" />            {/* Status */}
+                <col className="w-16" />            {/* Actions */}
+              </colgroup>
               <thead className="border-b bg-muted/30 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="w-10 px-3 py-3 sm:w-12 sm:px-4">
+                  <th className="px-3 py-2.5">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -394,19 +403,12 @@ export default function LeadsPage() {
                       className="h-4 w-4 cursor-pointer rounded border-input accent-primary"
                     />
                   </th>
-                  {/* Always visible */}
-                  <th className="px-2 py-3 font-semibold">Lead</th>
-                  {/* md+ : add Company */}
-                  <th className="hidden px-2 py-3 font-semibold md:table-cell">Company</th>
-                  {/* lg+ : add Title + Tech */}
-                  <th className="hidden px-2 py-3 font-semibold lg:table-cell">Title</th>
-                  <th className="hidden px-2 py-3 font-semibold lg:table-cell">Tech</th>
-                  {/* xl+ : add Location */}
-                  <th className="hidden px-2 py-3 font-semibold xl:table-cell">Location</th>
-                  {/* Always visible */}
-                  <th className="px-2 py-3 font-semibold">Score</th>
-                  <th className="px-2 py-3 font-semibold">Status</th>
-                  <th className="w-10 px-2 py-3 sm:w-12"></th>
+                  <th className="px-2 py-2.5 font-semibold">Lead</th>
+                  <th className="hidden px-2 py-2.5 font-semibold md:table-cell">Company</th>
+                  <th className="hidden px-2 py-2.5 font-semibold xl:table-cell">Title</th>
+                  <th className="px-2 py-2.5 font-semibold">Score</th>
+                  <th className="px-2 py-2.5 font-semibold">Status</th>
+                  <th className="px-2 py-2.5"></th>
                 </tr>
               </thead>
               <tbody>
@@ -420,7 +422,7 @@ export default function LeadsPage() {
                         isChecked ? 'bg-primary/5' : 'hover:bg-muted/40'
                       }`}
                     >
-                      <td className="px-3 py-3 sm:px-4">
+                      <td className="px-3 py-2.5">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -428,76 +430,70 @@ export default function LeadsPage() {
                           className="h-4 w-4 cursor-pointer rounded border-input accent-primary"
                         />
                       </td>
-                      {/* Lead — always visible. Folds Company in below the name
-                          on small screens (since the Company column is hidden). */}
-                      <td className="min-w-0 px-2 py-3">
-                        <div className="flex items-center gap-3">
+                      {/* Lead — always visible */}
+                      <td className="min-w-0 px-2 py-2.5">
+                        <div className="flex items-center gap-2.5">
                           <Avatar name={l.fullName} email={l.email} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium">{l.fullName ?? l.email?.split('@')[0] ?? '—'}</div>
-                            <div className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                              <Mail className="h-3 w-3 shrink-0" /> <span className="truncate font-mono">{l.email ?? '—'}</span>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="truncate text-sm font-medium leading-tight">
+                              {l.fullName ?? l.email?.split('@')[0] ?? '—'}
                             </div>
-                            {/* Mobile-only fallback: show Company under the email
-                                when the Company column is hidden (md and below). */}
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Mail className="h-2.5 w-2.5 shrink-0" />
+                              <span className="truncate font-mono text-[11px]">{l.email ?? '—'}</span>
+                            </div>
                             {l.companyName && (
-                              <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground md:hidden">
-                                <Building2 className="h-3 w-3 shrink-0" />
+                              <div className="flex items-center gap-1 text-[11px] text-muted-foreground md:hidden">
+                                <Building2 className="h-2.5 w-2.5 shrink-0" />
                                 <span className="truncate">{l.companyName}</span>
                               </div>
                             )}
                           </div>
                         </div>
                       </td>
-                      {/* md+ : Company column */}
-                      <td className="hidden min-w-0 px-2 py-3 md:table-cell">
+                      {/* Company — md+ */}
+                      <td className="hidden min-w-0 overflow-hidden px-2 py-2.5 md:table-cell">
                         {l.companyName ? (
                           <div className="flex items-center gap-1.5 text-xs">
                             <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
                             <span className="truncate font-medium">{l.companyName}</span>
                           </div>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      {/* lg+ : Title */}
-                      <td className="hidden max-w-[180px] truncate px-2 py-3 text-xs text-muted-foreground lg:table-cell">
-                        {l.jobTitle ?? '—'}
-                      </td>
-                      {/* lg+ : Tech */}
-                      <td className="hidden px-2 py-3 lg:table-cell">
-                        <div className="flex flex-wrap gap-0.5">
-                          {l.technologies.slice(0, 2).map((t) => (
-                            <span key={t} className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium">
-                              {t}
-                            </span>
-                          ))}
-                          {l.technologies.length > 2 && (
-                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              +{l.technologies.length - 2}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      {/* xl+ : Location */}
-                      <td className="hidden px-2 py-3 xl:table-cell">
-                        {l.country ? (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="h-3 w-3 shrink-0" />
+                        {l.country && (
+                          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
                             <span className="truncate">{[l.city, l.country].filter(Boolean).join(', ')}</span>
                           </div>
-                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                        )}
                       </td>
-                      <td className="px-2 py-3">
+                      {/* Title — xl+ */}
+                      <td className="hidden overflow-hidden px-2 py-2.5 xl:table-cell">
+                        <div className="truncate text-xs text-muted-foreground">{l.jobTitle ?? '—'}</div>
+                        {l.technologies.length > 0 && (
+                          <div className="mt-0.5 flex gap-0.5">
+                            {l.technologies.slice(0, 2).map((t) => (
+                              <span key={t} className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium">{t}</span>
+                            ))}
+                            {l.technologies.length > 2 && (
+                              <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">+{l.technologies.length - 2}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      {/* Score */}
+                      <td className="px-2 py-2.5">
                         {l.qualityScore != null ? (
-                          <div className="flex items-center gap-2">
-                            <div className="relative h-1.5 w-14 overflow-hidden rounded-full bg-muted">
-                              <div className="absolute inset-y-0 left-0 rounded-full bg-grad-brand transition-all"
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-bold tabular-nums">{l.qualityScore}</span>
+                            <div className="relative h-1 w-12 overflow-hidden rounded-full bg-muted">
+                              <div className="absolute inset-y-0 left-0 rounded-full bg-grad-brand"
                                    style={{ width: `${l.qualityScore}%` }} />
                             </div>
-                            <span className="text-xs font-bold tabular-nums">{l.qualityScore}</span>
                           </div>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-2 py-3">
+                      {/* Status */}
+                      <td className="px-2 py-2.5">
                         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${verify.color}`}>
                           <verify.icon className="h-2.5 w-2.5" />
                           {verify.label}
