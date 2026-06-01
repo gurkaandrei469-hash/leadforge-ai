@@ -7,7 +7,31 @@ import type { Filter } from '../filters/types.js';
 import { discoverSources } from './discovery.js';
 import { scrapePage, type ScrapedPage } from './scraper.js';
 import { extractLeads, type LeadCandidate } from './extractor.js';
+import { ROLE_LOCALPARTS } from '../verification/syntax.js';
 import { findLinkedInProfile } from './searchEngines.js';
+
+// Additional role-prefix patterns not worth enumerating individually
+const ROLE_PREFIX_RE = /^(?:no[_.-]?reply|do[_.-]?not[_.-]?reply|bounce|unsubscribe|auto[_.-]?reply|mailer)/i;
+
+/**
+ * Returns true only for emails that look like they belong to a real person —
+ * not a shared/role inbox.  Rejects:
+ *   • Exact matches in ROLE_LOCALPARTS (info@, support@, sales@, …)
+ *   • Known no-reply/bounce patterns
+ *   • Ultra-short generic local parts (hr@, it@, pr@)
+ *   • Garbage captures containing slashes or double-dots
+ */
+function isMarketableEmail(email: string | null): boolean {
+  if (!email) return false;
+  const local = email.split('@')[0]?.toLowerCase() ?? '';
+  if (!local) return false;
+  if (email.includes('/') || email.includes('..')) return false;
+  if (ROLE_LOCALPARTS.has(local)) return false;
+  if (ROLE_PREFIX_RE.test(local)) return false;
+  // Single/two-char all-alpha local — almost always a role alias (hr@, it@, pr@)
+  if (local.length <= 2 && /^[a-z]+$/.test(local)) return false;
+  return true;
+}
 
 interface RunArgs {
   jobId: string;
@@ -153,6 +177,7 @@ async function processBatch(state: ExtractionState, urls: string[]): Promise<voi
             }
 
             if (!matchInMemory(state.args.filters, c)) continue;
+            if (!isMarketableEmail(c.email)) continue;
             await persistLead(state, c);
           }
 
