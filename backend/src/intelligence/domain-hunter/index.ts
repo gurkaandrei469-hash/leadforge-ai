@@ -13,6 +13,7 @@ import pLimit from 'p-limit';
 import { crawlDomain } from './crawler.js';
 import { detectPattern, generateAllCandidates, applyPattern, type PatternType } from './pattern.js';
 import { findEmployees } from './employee-finder.js';
+import { enrichDomain } from './enrichment.js';
 import { verifyEmail } from '../../verification/verifier.js';
 import { prisma } from '../../db/prisma.js';
 import { verificationQueue } from '../../workers/queues.js';
@@ -55,51 +56,78 @@ export async function huntDomain(opts: DomainHuntOptions): Promise<DomainHuntRes
 
   logger.info({ domain, companyName }, 'domain hunt started');
 
-  // ── Stage 1: Crawl domain ────────────────────────────────────────────────
+  // ── Stage 1: Free-tier enrichment APIs (Hunter + Apollo + PDL) ──────────
+  onProgress({ stage: 'enriching', emailsFound: 0, employeesFound: 0 });
+  const enriched = await enrichDomain(domain);
+  logger.info({
+    domain,
+    sources: enriched.sources,
+    emails: enriched.emails.length,
+    employees: enriched.employees.length,
+    pattern: enriched.pattern,
+  }, 'enrichment done');
+  onProgress({ stage: 'enriched', emailsFound: enriched.emails.length, employeesFound: enriched.employees.length });
+
+  // ── Stage 2: Deep domain crawl (parallel) ────────────────────────────────
   onProgress({ stage: 'crawling', pagesVisited: 0 });
-  const crawl = await crawlDomain(domain, 250);
-  const realEmails = Array.from(crawl.emails);
-  logger.info({ domain, pages: crawl.pagesVisited, emails: realEmails.length }, 'crawl done');
-  onProgress({ stage: 'crawled', pagesVisited: crawl.pagesVisited, emailsFound: realEmails.length });
+  const crawl = await crawlDomain(domain, 200);
+  const allRealEmails = [...new Set([...enriched.emails, ...Array.from(crawl.emails)])];
+  logger.info({ domain, pages: crawl.pagesVisited, emails: allRealEmails.length }, 'crawl done');
+  onProgress({ stage: 'crawled', pagesVisited: crawl.pagesVisited, emailsFound: allRealEmails.length });
 
-  // ── Stage 2: Detect email pattern ────────────────────────────────────────
-  const detected = detectPattern(realEmails, domain);
-  logger.info({ domain, pattern: detected.pattern, confidence: detected.confidence }, 'pattern detected');
-  onProgress({ stage: 'pattern', emailsFound: realEmails.length });
+  // ── Stage 3: Detect email pattern ────────────────────────────────────────
+  // Hunter.io pattern takes priority if available (most accurate)
+  let detected = detectPattern(allRealEmails, domain);
+  if (enriched.pattern && detected.confidence < 0.5) {
+    // Map Hunter.io pattern format to our PatternType
+    const hunterMap: Record<string, PatternType> = {
+      '{first}.{last}': 'first.last',
+      '{first}{last}':  'firstlast',
+      '{f}{last}':      'flast',
+      '{first}':        'first',
+      '{first}_{last}': 'first_last',
+      '{f}.{last}':     'f.last',
+    };
+    const mapped = hunterMap[enriched.pattern];
+    if (mapped) detected = { pattern: mapped, confidence: 0.95, examples: allRealEmails.slice(0, 3) };
+  }
+  logger.info({ domain, pattern: detected.pattern, confidence: detected.confidence }, 'pattern');
+  onProgress({ stage: 'pattern', emailsFound: allRealEmails.length });
 
-  // ── Stage 3: Find employees ───────────────────────────────────────────────
+  // ── Stage 4: Merge employees from all sources ─────────────────────────────
   onProgress({ stage: 'finding_employees', employeesFound: 0 });
-  const employees = await findEmployees(domain, companyName, 600);
 
-  // Merge names from crawl too
-  for (const n of crawl.names) {
-    const parts = n.name.split(' ');
-    if (parts.length >= 2) {
-      employees.push({
-        fullName: n.name,
-        firstName: parts[0]!,
-        lastName: parts[parts.length - 1]!,
-        title: n.title,
-        source: n.url,
-      });
+  // Web employee search (Serper-based)
+  const webEmployees = await findEmployees(domain, companyName, 300);
+
+  // Merge all sources: enrichment APIs + crawl + web search
+  const empMap = new Map<string, { fullName: string; firstName: string; lastName: string; title?: string; source: string; email?: string }>();
+
+  const addEmp = (firstName: string, lastName: string, opts: { title?: string; source: string; email?: string }) => {
+    const k = `${firstName.toLowerCase()}+${lastName.toLowerCase()}`;
+    if (!empMap.has(k)) {
+      empMap.set(k, { fullName: `${firstName} ${lastName}`, firstName, lastName, ...opts });
+    } else if (opts.email && !empMap.get(k)!.email) {
+      empMap.set(k, { ...empMap.get(k)!, email: opts.email });
     }
+  };
+
+  for (const e of enriched.employees) addEmp(e.firstName, e.lastName, { title: e.title, source: e.source, email: e.email });
+  for (const e of webEmployees) addEmp(e.firstName, e.lastName, { title: e.title, source: e.source });
+  for (const n of crawl.names) {
+    const parts = n.name.trim().split(/\s+/);
+    if (parts.length >= 2) addEmp(parts[0]!, parts[parts.length - 1]!, { title: n.title ?? undefined, source: n.url ?? 'crawl' });
   }
 
-  // Dedup employees
-  const empMap = new Map<string, typeof employees[0]>();
-  for (const e of employees) {
-    const key = `${e.firstName.toLowerCase()}+${e.lastName.toLowerCase()}`;
-    if (!empMap.has(key)) empMap.set(key, e);
-  }
   const uniqueEmployees = Array.from(empMap.values());
-  logger.info({ domain, employees: uniqueEmployees.length }, 'employees found');
+  logger.info({ domain, employees: uniqueEmployees.length }, 'employees merged');
   onProgress({ stage: 'employees_found', employeesFound: uniqueEmployees.length });
 
   // ── Stage 4: Generate candidates ─────────────────────────────────────────
   const candidateSet = new Set<string>();
 
   // Add real emails directly (already verified by existing on the site)
-  for (const e of realEmails) candidateSet.add(e);
+  for (const e of allRealEmails) candidateSet.add(e);
 
   // Generate from pattern × employees
   if (detected.pattern !== 'unknown') {
@@ -233,7 +261,7 @@ export async function huntDomain(opts: DomainHuntOptions): Promise<DomainHuntRes
   logger.info({ domain, saved, verified, candidates: candidates.length }, 'domain hunt complete');
 
   return {
-    emailsDiscovered: realEmails.length,
+    emailsDiscovered: allRealEmails.length,
     employeesFound: uniqueEmployees.length,
     candidatesGenerated: candidates.length,
     verified,

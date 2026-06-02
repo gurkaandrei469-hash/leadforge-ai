@@ -85,12 +85,14 @@ async function main() {
         if (p.stage !== lastStage) {
           lastStage = p.stage;
           const stageLabel: Record<string, string> = {
-            crawling:          '🕷  Crawling domain pages...',
+            enriching:         '🔌  Querying enrichment APIs (Hunter + Apollo + PDL)...',
+            enriched:          `✓  Enrichment: ${p.emailsFound} emails, ${p.employeesFound} employees`,
+            crawling:          '🕷  Deep-crawling domain pages...',
             crawled:           `✓  Crawled ${p.pagesVisited} pages, found ${p.emailsFound} real emails`,
             pattern:           `✓  Email pattern detected`,
-            finding_employees: '👥  Finding employees (LinkedIn + team pages)...',
-            employees_found:   `✓  Found ${p.employeesFound} employees`,
-            verifying:         `⚡  Verifying email candidates...`,
+            finding_employees: '👥  Web search: LinkedIn + team pages...',
+            employees_found:   `✓  Total employees merged: ${p.employeesFound}`,
+            verifying:         `⚡  SMTP-verifying candidates (8 concurrent)...`,
           };
           if (stageLabel[p.stage]) console.log(`  ${stageLabel[p.stage]}`);
         }

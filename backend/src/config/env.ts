@@ -28,6 +28,10 @@ const schema = z.object({
     .default('false' as any),
   BRAVE_SEARCH_API_KEY: z.string().optional(),
   SERPER_API_KEY: z.string().optional(),
+  // Domain Hunter enrichment APIs (all free tiers)
+  HUNTER_API_KEY: z.string().optional(),   // hunter.io  — 25 domain searches/mo free
+  APOLLO_API_KEY: z.string().optional(),   // apollo.io  — unlimited people search free
+  PDL_API_KEY:    z.string().optional(),   // peopledatalabs.com — 1000 calls/mo free
   SMTP_VERIFY_FROM: z.string().email().default('verify@leadforge.ai'),
   SMTP_VERIFY_TIMEOUT_MS: z.coerce.number().default(10000),
   S3_BUCKET: z.string().optional(),
