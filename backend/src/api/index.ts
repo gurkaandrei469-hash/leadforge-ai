@@ -20,6 +20,7 @@ import campaignsRoutes from './routes/campaigns.js';
 import trackingRoutes from './routes/tracking.js';
 import leadImportRoutes from './routes/lead-import.js';
 import intelligenceRoutes from './routes/intelligence.js';
+import domainHuntRoutes from './routes/domain-hunt.js';
 
 export const apiRouter = Router();
 
@@ -44,3 +45,4 @@ apiRouter.use('/campaigns', campaignsRoutes);
 apiRouter.use('/track', trackingRoutes);
 apiRouter.use('/leads/import', leadImportRoutes);
 apiRouter.use('/intelligence', intelligenceRoutes);
+apiRouter.use('/domain-hunt', domainHuntRoutes);
