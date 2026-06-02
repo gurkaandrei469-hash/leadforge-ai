@@ -90,6 +90,8 @@ async function main() {
             crawling:          '🕷  Deep-crawling domain pages...',
             crawled:           `✓  Crawled ${p.pagesVisited} pages, found ${p.emailsFound} real emails`,
             pattern:           `✓  Email pattern detected`,
+            osint:             '🕵️  OSINT scan: GitHub, dorks, conferences, crt.sh...',
+            osint_done:        `✓  OSINT complete — ${p.emailsFound} total real emails`,
             finding_employees: '👥  Web search: LinkedIn + team pages...',
             employees_found:   `✓  Total employees merged: ${p.employeesFound}`,
             verifying:         `⚡  SMTP-verifying candidates (8 concurrent)...`,

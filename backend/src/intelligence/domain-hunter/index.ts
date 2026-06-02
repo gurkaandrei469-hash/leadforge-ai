@@ -14,6 +14,7 @@ import { crawlDomain } from './crawler.js';
 import { detectPattern, generateAllCandidates, applyPattern, type PatternType } from './pattern.js';
 import { findEmployees } from './employee-finder.js';
 import { enrichDomain } from './enrichment.js';
+import { osintDomain } from './osint.js';
 import { verifyEmail } from '../../verification/verifier.js';
 import { prisma } from '../../db/prisma.js';
 import { verificationQueue } from '../../workers/queues.js';
@@ -93,6 +94,26 @@ export async function huntDomain(opts: DomainHuntOptions): Promise<DomainHuntRes
   }
   logger.info({ domain, pattern: detected.pattern, confidence: detected.confidence }, 'pattern');
   onProgress({ stage: 'pattern', emailsFound: allRealEmails.length });
+
+  // ── Stage 3b: OSINT scan — GitHub, dorks, conferences, crt.sh ─────────────
+  onProgress({ stage: 'osint', emailsFound: allRealEmails.length });
+  const osint = await osintDomain(domain, companyName, (msg, count) => {
+    logger.debug({ domain, msg, count }, 'osint');
+  });
+
+  // Merge OSINT emails into the real-email pool
+  for (const [email] of osint.emails) {
+    if (!allRealEmails.includes(email)) allRealEmails.push(email);
+  }
+  // Re-run pattern detection with all discovered emails
+  if (osint.emails.size > 0) {
+    const refreshed = detectPattern(allRealEmails, domain);
+    if (refreshed.confidence > detected.confidence) {
+      detected = refreshed;
+    }
+  }
+  logger.info({ domain, osintEmails: osint.emails.size, totalReal: allRealEmails.length }, 'osint merged');
+  onProgress({ stage: 'osint_done', emailsFound: allRealEmails.length });
 
   // ── Stage 4: Merge employees from all sources ─────────────────────────────
   onProgress({ stage: 'finding_employees', employeesFound: 0 });
