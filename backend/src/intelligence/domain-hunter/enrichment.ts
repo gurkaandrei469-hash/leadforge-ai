@@ -10,8 +10,10 @@
  *   HUNTER_API_KEY, APOLLO_API_KEY, PDL_API_KEY
  */
 import axios from 'axios';
-import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+
+// Read directly from process.env so CLI-passed vars work alongside dotenv
+const getKey = (name: string) => process.env[name] ?? '';
 
 export interface EnrichedEmployee {
   firstName: string;
@@ -34,7 +36,7 @@ export interface DomainEnrichmentResult {
 // ─── Hunter.io ───────────────────────────────────────────────────────────────
 
 async function hunterDomainSearch(domain: string): Promise<DomainEnrichmentResult | null> {
-  const key = (env as any).HUNTER_API_KEY;
+  const key = getKey('HUNTER_API_KEY');
   if (!key) return null;
 
   try {
@@ -86,7 +88,7 @@ async function hunterDomainSearch(domain: string): Promise<DomainEnrichmentResul
 // ─── Apollo.io ───────────────────────────────────────────────────────────────
 
 async function apolloPeopleSearch(domain: string): Promise<EnrichedEmployee[]> {
-  const key = (env as any).APOLLO_API_KEY;
+  const key = getKey("APOLLO_API_KEY");
   if (!key) return [];
 
   const employees: EnrichedEmployee[] = [];
@@ -106,7 +108,7 @@ async function apolloPeopleSearch(domain: string): Promise<EnrichedEmployee[]> {
         },
         {
           headers: {
-            'X-Api-Key': key,
+            'Authorization': `Bearer ${key}`,   // header-based auth (URL params deprecated)
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache',
           },
@@ -149,7 +151,7 @@ async function apolloPeopleSearch(domain: string): Promise<EnrichedEmployee[]> {
 // ─── PDL (People Data Labs) ──────────────────────────────────────────────────
 
 async function pdlCompanySearch(domain: string): Promise<EnrichedEmployee[]> {
-  const key = (env as any).PDL_API_KEY;
+  const key = getKey("PDL_API_KEY");
   if (!key) return [];
 
   const employees: EnrichedEmployee[] = [];
