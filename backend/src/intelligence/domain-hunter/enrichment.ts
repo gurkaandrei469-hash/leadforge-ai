@@ -40,28 +40,16 @@ async function hunterDomainSearch(domain: string): Promise<DomainEnrichmentResul
   if (!key) return null;
 
   try {
-    let allEmails: any[] = [];
-    let pattern: string | undefined;
-    let organization: string | undefined;
-    let offset = 0;
-    const limit = 100;
+    // Free plan: one request, 10 results max. Paid plans can increase limit.
+    const { data } = await axios.get('https://api.hunter.io/v2/domain-search', {
+      params: { domain, api_key: key, limit: 10, offset: 0 },
+      timeout: 15000,
+    });
 
-    // Paginate through all results
-    while (true) {
-      const { data } = await axios.get('https://api.hunter.io/v2/domain-search', {
-        params: { domain, api_key: key, limit, offset },
-        timeout: 15000,
-      });
-
-      const d = data.data;
-      if (!pattern) pattern = d.pattern;
-      if (!organization) organization = d.organization;
-      allEmails = allEmails.concat(d.emails ?? []);
-
-      if ((d.emails?.length ?? 0) < limit) break;
-      offset += limit;
-      await new Promise(r => setTimeout(r, 200));
-    }
+    const d = data.data ?? {};
+    const pattern = d.pattern as string | undefined;
+    const organization = d.organization as string | undefined;
+    const allEmails: any[] = d.emails ?? [];
 
     const employees: EnrichedEmployee[] = allEmails
       .filter(e => e.first_name && e.last_name)
