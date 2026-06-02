@@ -184,7 +184,15 @@ export async function huntDomain(opts: DomainHuntOptions): Promise<DomainHuntRes
       verified++;
       onProgress({ stage: 'verifying', verified, saved, candidatesGenerated: candidates.length });
 
-      if (result.status !== 'VALID' && result.status !== 'RISKY') return;
+      // For domain-targeted hunts, also accept CATCH_ALL and UNKNOWN —
+      // ISPs commonly block SMTP probing so VALID/RISKY is rare.
+      // Emails confirmed by Hunter.io are saved regardless of SMTP result.
+      const emailLower = email.toLowerCase();
+      const isHunterConfirmed = allRealEmails.map(e => e.toLowerCase()).includes(emailLower);
+      const acceptableStatus = result.status === 'VALID' || result.status === 'RISKY'
+        || result.status === 'CATCH_ALL'
+        || (result.status === 'UNKNOWN' && isHunterConfirmed);
+      if (!acceptableStatus) return;
 
       const emp = empByEmail.get(email.toLowerCase());
       const domain_ = email.split('@')[1] ?? domain;
