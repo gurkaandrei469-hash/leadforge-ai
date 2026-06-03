@@ -15,6 +15,7 @@ import { detectPattern, generateAllCandidates, applyPattern, type PatternType } 
 import { findEmployees } from './employee-finder.js';
 import { enrichDomain } from './enrichment.js';
 import { osintDomain } from './osint.js';
+import { batchFastVerify } from './fast-verify.js';
 import { verifyEmail } from '../../verification/verifier.js';
 import { prisma } from '../../db/prisma.js';
 import { verificationQueue } from '../../workers/queues.js';
@@ -57,9 +58,9 @@ export async function huntDomain(opts: DomainHuntOptions): Promise<DomainHuntRes
 
   logger.info({ domain, companyName }, 'domain hunt started');
 
-  // ── Stage 1: Free-tier enrichment APIs (Hunter + Apollo + PDL) ──────────
+  // ── Stage 1: Free-tier enrichment APIs (Hunter + Apollo + PDL + GitHub) ─
   onProgress({ stage: 'enriching', emailsFound: 0, employeesFound: 0 });
-  const enriched = await enrichDomain(domain);
+  const enriched = await enrichDomain(domain, companyName);
   logger.info({
     domain,
     sources: enriched.sources,
@@ -179,8 +180,21 @@ export async function huntDomain(opts: DomainHuntOptions): Promise<DomainHuntRes
   logger.info({ domain, candidates: candidates.length }, 'candidates to verify');
   onProgress({ stage: 'verifying', candidatesGenerated: candidates.length });
 
+  // ── Stage 4b: Fast pre-screen (EmailRep + Clearbit Risk + catch-all probe) ─
+  onProgress({ stage: 'prescreening', candidatesGenerated: candidates.length });
+  let screened = candidates;
+  const catchAllEmails: string[] = [];
+  try {
+    const { pass, fail, catchall } = await batchFastVerify(candidates);
+    catchAllEmails.push(...catchall);
+    logger.info({ domain, pass: pass.length, fail: fail.length, catchall: catchall.length }, 'fast pre-screen done');
+    screened = pass; // only SMTP-probe the ones that passed pre-screen
+  } catch (e) {
+    logger.warn({ domain, err: (e as Error).message }, 'fast pre-screen failed — verifying all candidates');
+  }
+
   // ── Stage 5: SMTP verify ──────────────────────────────────────────────────
-  const limit = pLimit(8);   // 8 concurrent verifications
+  const limit = pLimit(50);  // 50 concurrent verifications (up from 8)
   let verified = 0;
   let saved = 0;
   const empByEmail = new Map<string, typeof uniqueEmployees[0]>();

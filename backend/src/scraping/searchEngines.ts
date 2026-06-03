@@ -2,6 +2,8 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { getSerperPool } from '../intelligence/domain-hunter/key-pool.js';
+const serperPool = getSerperPool();
 
 export interface SearchResult {
   url: string;
@@ -33,12 +35,24 @@ export async function ddgSearch(query: string, limit = 25): Promise<SearchResult
     }
   }
 
-  if (env.SERPER_API_KEY) {
+  // Serper — try all pooled keys in rotation until one works
+  const serperKey = serperPool.getKey();
+  if (serperKey) {
     try {
-      const results = await searchSerper(query, limit, env.SERPER_API_KEY);
+      const results = await searchSerper(query, limit, serperKey);
       if (results.length > 0) return results;
-    } catch (err) {
-      logger.warn({ err: (err as Error).message }, 'Serper search failed; trying next backend');
+    } catch (err: any) {
+      const msg = err?.message ?? '';
+      if (/429|quota|credits|rate/i.test(msg)) serperPool.markExhausted(serperKey);
+      // Try next key in pool immediately
+      const nextKey = serperPool.getKey();
+      if (nextKey && nextKey !== serperKey) {
+        try {
+          const r2 = await searchSerper(query, limit, nextKey);
+          if (r2.length > 0) return r2;
+        } catch { /* fall through */ }
+      }
+      logger.warn({ err: msg }, 'Serper search failed; trying next backend');
     }
   }
 

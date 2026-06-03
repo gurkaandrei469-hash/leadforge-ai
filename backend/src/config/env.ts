@@ -29,9 +29,20 @@ const schema = z.object({
   BRAVE_SEARCH_API_KEY: z.string().optional(),
   SERPER_API_KEY: z.string().optional(),
   // Domain Hunter enrichment APIs (all free tiers)
-  HUNTER_API_KEY: z.string().optional(),   // hunter.io  — 25 domain searches/mo free
-  APOLLO_API_KEY: z.string().optional(),   // apollo.io  — unlimited people search free
-  PDL_API_KEY:    z.string().optional(),   // peopledatalabs.com — 1000 calls/mo free
+  HUNTER_API_KEY:   z.string().optional(),
+  HUNTER_API_KEY_2: z.string().optional(),
+  HUNTER_API_KEY_3: z.string().optional(),
+  APOLLO_API_KEY:   z.string().optional(),
+  PDL_API_KEY:      z.string().optional(),
+  // Multi-key Serper rotation — increases monthly quota N×
+  SERPER_API_KEY_2: z.string().optional(),
+  SERPER_API_KEY_3: z.string().optional(),
+  SERPER_API_KEY_4: z.string().optional(),
+  SERPER_API_KEY_5: z.string().optional(),
+  // GitHub token — raises rate limit 60 → 5000 req/hr for OSINT scans
+  GITHUB_TOKEN:     z.string().optional(),
+  // EmailRep.io — optional key improves rate limits for fast-verify
+  EMAILREP_API_KEY: z.string().optional(),
   SMTP_VERIFY_FROM: z.string().email().default('verify@leadforge.ai'),
   SMTP_VERIFY_TIMEOUT_MS: z.coerce.number().default(10000),
   S3_BUCKET: z.string().optional(),

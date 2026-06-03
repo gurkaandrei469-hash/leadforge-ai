@@ -10,7 +10,6 @@
  *  7. Pastebin / public data dumps
  */
 import axios from 'axios';
-import * as cheerio from 'cheerio';
 import { ddgSearch } from '../../scraping/searchEngines.js';
 import { logger } from '../../utils/logger.js';
 
@@ -280,34 +279,63 @@ export async function osintDomain(
     onProgress?.(`${sourceName}: +${emails.size} emails`, allEmails.size);
   };
 
-  logger.info({ domain, companyName }, 'osint scan started');
+  logger.info({ domain, companyName }, 'osint scan started (parallel)');
+  onProgress?.('Running all 6 OSINT channels in parallel...', 0);
 
-  // Run all sources
-  onProgress?.('GitHub search...', 0);
-  const gh = await searchGitHub(domain);
-  merge(gh, 'github');
+  // Run all 6 channels in parallel — ~3 min instead of ~18 min sequential
+  const [ghRes, gdRes, confRes, certsRes, pastesRes, jobsRes] = await Promise.allSettled([
+    searchGitHub(domain),
+    googleDorks(domain),
+    industryConferences(domain, companyName),
+    certTransparency(domain).then(certs => new Map(certs.map(e => [e, `crt.sh:${domain}`] as [string, string]))),
+    searchPasteSites(domain),
+    jobBoards(domain, companyName),
+  ]);
 
-  onProgress?.('Google dorks...', allEmails.size);
-  const gd = await googleDorks(domain);
-  merge(gd, 'google-dorks');
+  // Merge results — log but don't crash if a channel failed
+  if (ghRes.status === 'fulfilled') {
+    merge(ghRes.value, 'github');
+  } else {
+    logger.warn({ domain, err: ghRes.reason?.message }, 'osint: GitHub channel failed');
+    sources++;
+  }
 
-  onProgress?.('Industry conferences...', allEmails.size);
-  const conf = await industryConferences(domain, companyName);
-  merge(conf, 'conferences');
+  if (gdRes.status === 'fulfilled') {
+    merge(gdRes.value, 'google-dorks');
+  } else {
+    logger.warn({ domain, err: gdRes.reason?.message }, 'osint: Google dorks channel failed');
+    sources++;
+  }
 
-  onProgress?.('Certificate Transparency...', allEmails.size);
-  const certs = await certTransparency(domain);
-  const certMap = new Map(certs.map(e => [e, `crt.sh:${domain}`]));
-  merge(certMap, 'crt.sh');
+  if (confRes.status === 'fulfilled') {
+    merge(confRes.value, 'conferences');
+  } else {
+    logger.warn({ domain, err: confRes.reason?.message }, 'osint: Conferences channel failed');
+    sources++;
+  }
 
-  onProgress?.('Paste sites...', allEmails.size);
-  const pastes = await searchPasteSites(domain);
-  merge(pastes, 'pastes');
+  if (certsRes.status === 'fulfilled') {
+    merge(certsRes.value, 'crt.sh');
+  } else {
+    logger.warn({ domain, err: certsRes.reason?.message }, 'osint: crt.sh channel failed');
+    sources++;
+  }
 
-  onProgress?.('Job boards...', allEmails.size);
-  const jobs = await jobBoards(domain, companyName);
-  merge(jobs, 'jobs');
+  if (pastesRes.status === 'fulfilled') {
+    merge(pastesRes.value, 'pastes');
+  } else {
+    logger.warn({ domain, err: pastesRes.reason?.message }, 'osint: Pastes channel failed');
+    sources++;
+  }
 
+  if (jobsRes.status === 'fulfilled') {
+    merge(jobsRes.value, 'jobs');
+  } else {
+    logger.warn({ domain, err: jobsRes.reason?.message }, 'osint: Jobs channel failed');
+    sources++;
+  }
+
+  onProgress?.(`All OSINT channels complete`, allEmails.size);
   logger.info({ domain, emails: allEmails.size, sources }, 'osint scan complete');
 
   return { emails: allEmails, totalSources: sources };

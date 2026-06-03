@@ -197,9 +197,101 @@ async function pdlCompanySearch(domain: string): Promise<EnrichedEmployee[]> {
   return employees;
 }
 
+// ─── GitHub Org Scan ─────────────────────────────────────────────────────────
+
+export async function searchGitHubOrg(domain: string, companyName: string): Promise<EnrichedEmployee[]> {
+  const token = process.env.GITHUB_TOKEN ?? '';
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github+json',
+    'User-Agent': 'LeadForge-OSINT/1.0',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+
+  const employees: EnrichedEmployee[] = [];
+  const seen = new Set<string>();
+
+  const addEmployee = (firstName: string, lastName: string, email: string | undefined, source: string) => {
+    if (!firstName || !lastName) return;
+    const k = `${firstName.toLowerCase()}+${lastName.toLowerCase()}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    employees.push({ firstName, lastName, fullName: `${firstName} ${lastName}`, email, source });
+  };
+
+  // Step 1: Find the GitHub org for this company
+  let orgLogin: string | null = null;
+  try {
+    const { data } = await axios.get('https://api.github.com/search/users', {
+      params: { q: `${companyName} type:org`, per_page: 5 },
+      headers,
+      timeout: 10000,
+    });
+    // Pick the best match: prefer exact name or one that contains the company keyword
+    const items: any[] = data.items ?? [];
+    const match = items.find((i: any) =>
+      i.login?.toLowerCase().includes(companyName.toLowerCase().replace(/\s+/g, '')) ||
+      i.login?.toLowerCase().includes(companyName.toLowerCase().split(' ')[0]!)
+    ) ?? items[0];
+    orgLogin = match?.login ?? null;
+  } catch { /* ignore */ }
+
+  if (orgLogin) {
+    logger.info({ domain, org: orgLogin }, 'github org: found org');
+
+    // Step 2: List org members
+    try {
+      const { data } = await axios.get(`https://api.github.com/orgs/${orgLogin}/members`, {
+        params: { per_page: 100 },
+        headers,
+        timeout: 15000,
+      });
+      const members: any[] = data ?? [];
+
+      // Step 3: Fetch each member's public profile for email
+      await Promise.allSettled(members.slice(0, 50).map(async (member: any) => {
+        try {
+          const { data: user } = await axios.get(`https://api.github.com/users/${member.login}`, {
+            headers,
+            timeout: 8000,
+          });
+          const email: string | undefined = user.email && user.email.endsWith('@' + domain)
+            ? user.email
+            : undefined;
+          const name: string = user.name ?? member.login ?? '';
+          const parts = name.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            addEmployee(parts[0]!, parts[parts.length - 1]!, email, `github-org:${orgLogin}`);
+          }
+        } catch { /* ignore individual fetch failures */ }
+      }));
+    } catch { /* ignore */ }
+  }
+
+  // Step 4: Search commits for emails matching the domain
+  try {
+    const { data } = await axios.get('https://api.github.com/search/commits', {
+      params: { q: `author-email:${domain}`, per_page: 50 },
+      headers: { ...headers, 'Accept': 'application/vnd.github.cloak-preview+json' },
+      timeout: 15000,
+    });
+    for (const c of data.items ?? []) {
+      const email: string = c.commit?.author?.email ?? '';
+      if (!email.endsWith('@' + domain)) continue;
+      const name: string = c.commit?.author?.name ?? '';
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        addEmployee(parts[0]!, parts[parts.length - 1]!, email, `github-commit:${orgLogin ?? 'public'}`);
+      }
+    }
+  } catch { /* ignore */ }
+
+  logger.info({ domain, employees: employees.length }, 'github org scan complete');
+  return employees;
+}
+
 // ─── Main enrichment entry point ─────────────────────────────────────────────
 
-export async function enrichDomain(domain: string): Promise<DomainEnrichmentResult> {
+export async function enrichDomain(domain: string, companyName?: string): Promise<DomainEnrichmentResult> {
   const result: DomainEnrichmentResult = {
     emails: [],
     employees: [],
@@ -245,6 +337,23 @@ export async function enrichDomain(domain: string): Promise<DomainEnrichmentResu
     // PDL often has work emails — add them to our known emails list
     for (const e of pdlEmps) {
       if (e.email?.endsWith('@' + domain)) result.emails.push(e.email);
+    }
+  }
+
+  // 4. GitHub org scan — public member emails + commit emails
+  if (companyName) {
+    try {
+      const ghEmps = await searchGitHubOrg(domain, companyName);
+      if (ghEmps.length > 0) {
+        result.sources.push('github-org');
+        merge(ghEmps);
+        // Collect any confirmed work emails from GitHub profiles
+        for (const e of ghEmps) {
+          if (e.email?.endsWith('@' + domain)) result.emails.push(e.email);
+        }
+      }
+    } catch (e: any) {
+      logger.warn({ domain, err: e.message }, 'github org scan failed — skipping');
     }
   }
 

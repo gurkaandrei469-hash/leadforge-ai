@@ -18,3 +18,4 @@ test-results/
 .railway-api-env.txt
 .railway-worker-env.txt
 .vercel-env.txt
+.vercel

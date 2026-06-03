@@ -1,0 +1,17 @@
+# Skip everything except the backend folder when CLI-uploading for the API/workers services.
+# The frontend lives on Vercel; no reason to ship it to Railway.
+frontend/
+node_modules/
+**/node_modules/
+.git/
+.next/
+dist/
+*.log
+.env
+.env.local
+.deploy-secrets
+.railway-api-env.txt
+.railway-worker-env.txt
+.vercel-env.txt
+infrastructure/
+docs/
